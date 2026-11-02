@@ -604,3 +604,10 @@ td.in { color: var(--good); } td.out { color: var(--ink); }
 @keyframes lgSheet { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .lg3 * { animation: none !important; } }
 @media (max-height: 780px) { .lg3 .lg-scene { width: min(270px, 70vw); } .lg3 .lg-top { padding-bottom: 12px; } }
+
+/* ===== รอบ 4: รายงาน ===== */
+.mbars { display: grid; grid-template-columns: repeat(12, minmax(0,1fr)); gap: 6px; align-items: end; height: 170px; padding-top: 16px; }
+.mbars .mb { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; gap: 4px; font-size: 11.5px; color: var(--sub); min-width: 0; }
+.mbars .mb i { display: block; width: 70%; max-width: 34px; background: var(--brand-2); border-radius: 5px 5px 2px 2px; }
+.mbars .mb .bv { font-family: var(--f-num); font-size: 10.5px; color: var(--ink); white-space: nowrap; }
+@container app (max-width: 760px) { .mbars .mb .bv { display: none; } }
