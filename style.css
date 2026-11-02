@@ -510,22 +510,97 @@ td.in { color: var(--good); } td.out { color: var(--ink); }
   #printv .a4:last-child { page-break-after: auto; break-after: auto; }
 }
 
-/* ===== หน้าโหลด (splash) ===== */
-.splash { position: fixed; inset: 0; z-index: 300; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px 16px calc(28px + env(safe-area-inset-bottom)); background: radial-gradient(120% 90% at 50% 30%, #4A7259 0%, #3F654D 38%, #1F3428 100%); color: #fff; overflow: hidden; transition: opacity .45s ease, visibility .45s; }
-.splash.out { opacity: 0; visibility: hidden; }
-.splash .sp-glow { position: absolute; width: 520px; height: 520px; border-radius: 50%; top: 50%; left: 50%; transform: translate(-50%, -62%); background: radial-gradient(circle, rgba(210,220,216,.18), transparent 62%); animation: spGlow 3.2s ease-in-out infinite; }
-.splash .sp-mid { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; position: relative; text-align: center; }
-.splash .sp-icon { width: 112px; height: 112px; border-radius: 26px; box-shadow: 0 18px 40px rgba(0,0,0,.28), 0 0 0 1px rgba(255,255,255,.12); animation: spIn .7s cubic-bezier(.2,.9,.3,1.2) both, spFloat 2.6s ease-in-out .8s infinite; }
-.splash .sp-name { font-family: 'Chakra Petch', 'Anuphan', sans-serif; font-weight: 700; font-size: 30px; letter-spacing: .02em; margin-top: 10px; animation: spUp .6s ease .25s both; }
+/* ===== หน้าโหลด (splash) · เงิน + การเดินทาง ===== */
+.splash { position: fixed; inset: 0; z-index: 300; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px 16px calc(26px + env(safe-area-inset-bottom)); background: radial-gradient(120% 90% at 50% 32%, #4E7A5F 0%, #3F654D 40%, #1F3428 100%); color: #fff; overflow: hidden; transition: opacity .5s ease, visibility .5s, transform .5s ease; }
+.splash.out { opacity: 0; visibility: hidden; transform: scale(1.04); }
+.sp-bg { position: absolute; inset: 0; pointer-events: none; }
+.sp-bg span { position: absolute; left: var(--x); bottom: -40px; font: 700 calc(34px * var(--s)) 'Chakra Petch', sans-serif; color: rgba(233,196,106,.16); animation: spRise 7s linear var(--d) infinite; }
+.sp-bg i { position: absolute; left: var(--x); bottom: -30px; width: 12px; height: 12px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); background: rgba(210,220,216,.14); animation: spRise 8s linear var(--d) infinite; }
+.splash .sp-mid { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; position: relative; text-align: center; }
+.sp-scene { width: min(320px, 86vw); height: auto; overflow: visible; }
+.sp-scene .wallet { transform-box: fill-box; transform-origin: 50% 100%; filter: drop-shadow(0 14px 22px rgba(0,0,0,.3)); animation: spIn .7s cubic-bezier(.2,.9,.3,1.25) both, spCatch .9s ease-in-out .7s infinite; }
+.sp-scene .coin { transform-box: fill-box; animation: spDrop 2.7s cubic-bezier(.45,0,.75,.4) infinite; opacity: 0; }
+.sp-scene .c1 { --cx: -16px; animation-delay: .6s; } .sp-scene .c2 { --cx: 6px; animation-delay: 1.5s; } .sp-scene .c3 { --cx: 20px; animation-delay: 2.4s; }
+.sp-scene .spark { transform-box: fill-box; transform-origin: center; animation: spSpark .9s ease-out 1.25s infinite; opacity: 0; }
+.sp-scene .truck { animation: spDrive 3.6s linear infinite; }
+.sp-scene .wh { transform-box: fill-box; transform-origin: center; animation: spSpin .45s linear infinite; }
+.sp-scene .dust { animation: spDust .45s ease-in-out infinite alternate; }
+.sp-scene .pin { transform-box: fill-box; transform-origin: 50% 100%; }
+.sp-scene .pin > * { transform-box: fill-box; }
+.sp-scene .p1 { animation: spPin1 3.6s ease-out infinite; } .sp-scene .p2 { animation: spPin2 3.6s ease-out infinite; } .sp-scene .p3 { animation: spPin3 3.6s ease-out infinite; }
+.splash .sp-name { font-family: 'Chakra Petch', 'Anuphan', sans-serif; font-weight: 700; font-size: 30px; letter-spacing: .02em; margin-top: 4px; animation: spUp .6s ease .25s both; }
 .splash .sp-sub { font-size: 13.5px; color: #D2DCD8; animation: spUp .6s ease .35s both; }
-.splash .sp-bar { width: 180px; height: 4px; border-radius: 4px; background: rgba(255,255,255,.16); overflow: hidden; margin-top: 22px; animation: spUp .6s ease .45s both; }
-.splash .sp-bar i { display: block; height: 100%; width: 40%; border-radius: 4px; background: #D2DCD8; animation: spRun 1.15s ease-in-out infinite; }
-.splash .sp-msg { font-size: 12.5px; color: rgba(255,255,255,.72); min-height: 1.4em; animation: spUp .6s ease .5s both; }
+@property --km { syntax: '<integer>'; inherits: false; initial-value: 0; }
+@property --bt { syntax: '<integer>'; inherits: false; initial-value: 0; }
+.sp-meter { display: flex; gap: 10px; align-items: center; margin-top: 10px; font-family: 'Chakra Petch', sans-serif; font-size: 13px; color: rgba(255,255,255,.8); background: rgba(0,0,0,.16); border: 1px solid rgba(255,255,255,.12); border-radius: 999px; padding: 4px 14px; animation: spUp .6s ease .45s both; font-variant-numeric: tabular-nums; }
+.sp-meter .dot { width: 4px; height: 4px; border-radius: 50%; background: rgba(255,255,255,.4); }
+.sp-meter .km { counter-reset: km var(--km); animation: spKm 3.6s linear infinite; } .sp-meter .km::after { content: counter(km); }
+.sp-meter .baht { color: #E9C46A; counter-reset: bt var(--bt); animation: spBt 3.6s linear infinite; } .sp-meter .baht::after { content: counter(bt); }
+.splash .sp-bar { width: 180px; height: 4px; border-radius: 4px; background: rgba(255,255,255,.16); overflow: hidden; margin-top: 14px; animation: spUp .6s ease .5s both; }
+.splash .sp-bar i { display: block; height: 100%; width: 40%; border-radius: 4px; background: linear-gradient(90deg, #D2DCD8, #E9C46A); animation: spRun 1.15s ease-in-out infinite; }
+.splash .sp-msg { font-size: 12.5px; color: rgba(255,255,255,.72); min-height: 1.4em; animation: spUp .6s ease .55s both; }
 .splash .sp-foot { height: 18px; width: auto; opacity: .7; position: relative; }
-@keyframes spIn { from { opacity: 0; transform: translateY(14px) scale(.82); } to { opacity: 1; transform: none; } }
+@keyframes spIn { from { opacity: 0; transform: translateY(16px) scale(.8); } to { opacity: 1; transform: none; } }
+@keyframes spCatch { 0%, 55%, 100% { transform: none; } 70% { transform: scale(1.06, .93); } 85% { transform: scale(.98, 1.03); } }
+@keyframes spDrop { 0% { opacity: 0; transform: translate(var(--cx), 6px) rotate(-20deg); } 12% { opacity: 1; } 34% { opacity: 1; transform: translate(calc(var(--cx) * .4), 92px) rotate(160deg) scale(.85); } 40%, 100% { opacity: 0; transform: translate(0, 100px) rotate(200deg) scale(.5); } }
+@keyframes spSpark { 0% { opacity: 0; transform: scale(.3); } 30% { opacity: 1; transform: scale(1.1) rotate(20deg); } 100% { opacity: 0; transform: scale(.4) rotate(45deg); } }
+@keyframes spDrive { from { transform: translateX(-10px); } to { transform: translateX(340px); } }
+@keyframes spSpin { to { transform: rotate(360deg); } }
+@keyframes spDust { from { opacity: .2; transform: translateX(0); } to { opacity: .8; transform: translateX(-3px); } }
+@keyframes spPin1 { 0%, 8% { transform: translateY(0) scale(.9); opacity: .55; } 14% { transform: translateY(-7px) scale(1.15); opacity: 1; } 22%, 92% { transform: none; opacity: 1; } 100% { opacity: .55; transform: scale(.9); } }
+@keyframes spPin2 { 0%, 44% { transform: scale(.9); opacity: .55; } 50% { transform: translateY(-7px) scale(1.15); opacity: 1; } 58%, 92% { transform: none; opacity: 1; } 100% { opacity: .55; transform: scale(.9); } }
+@keyframes spPin3 { 0%, 79% { transform: scale(.9); opacity: .55; } 85% { transform: translateY(-9px) scale(1.25); opacity: 1; } 93% { transform: none; opacity: 1; } 100% { opacity: .55; transform: scale(.9); } }
+@keyframes spKm { from { --km: 0; } 90%, to { --km: 128; } }
+@keyframes spBt { from { --bt: 0; } 90%, to { --bt: 1560; } }
 @keyframes spUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-@keyframes spFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
 @keyframes spRun { 0% { transform: translateX(-110%); } 100% { transform: translateX(260%); } }
-@keyframes spGlow { 0%, 100% { opacity: .7; } 50% { opacity: 1; } }
-@media (prefers-reduced-motion: reduce) { .splash *, .splash { animation: none !important; transition: none !important; } .splash .sp-bar i { width: 100%; opacity: .6; } }
+@keyframes spRise { 0% { transform: translateY(0) rotate(-45deg); opacity: 0; } 15% { opacity: 1; } 100% { transform: translateY(-110vh) rotate(-45deg); opacity: 0; } }
+.sp-bg span { animation-name: spRiseT; } @keyframes spRiseT { 0% { transform: translateY(0); opacity: 0; } 15% { opacity: 1; } 100% { transform: translateY(-110vh); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .splash *, .splash { animation: none !important; transition: none !important; } .sp-scene .coin, .sp-scene .spark { opacity: 0; } .sp-meter .km { --km: 128; } .sp-meter .baht { --bt: 1560; } .splash .sp-bar i { width: 100%; opacity: .6; } }
 @media print { .splash { display: none !important; } }
+
+/* ===== หัวเมนู + หน้าเข้าสู่ระบบ · โลโก้ C2-Pay ===== */
+.side .logo { gap: 10px; }
+.side .logo .lg-ic { width: 38px; height: 38px; border-radius: 10px; flex: none; box-shadow: 0 0 0 1px rgba(255,255,255,.14); }
+.side .logo .lg-tx { min-width: 0; }
+.side .logo .lg-tx b { display: block; font-family: var(--f-num); font-size: 19px; font-weight: 700; color: #fff; line-height: 1.1; letter-spacing: .01em; }
+.side .logo .lg-tx small { display: flex; align-items: center; gap: 5px; margin-top: 3px; }
+.side .logo .lg-tx small img { height: 9px; width: auto; opacity: .9; }
+.app.mini .side .logo .lg-tx { display: none; }
+.app.mini .side .logo .lg-ic { width: 36px; height: 36px; }
+.top .tlogo { display: none; width: 34px; height: 34px; border-radius: 9px; flex: none; }
+@container app (max-width: 760px) { .top .tlogo { display: block; } }
+.auth { background: radial-gradient(110% 70% at 50% 0%, var(--tint) 0%, var(--bg) 60%); }
+.auth .brand { display: flex; align-items: center; gap: 12px; }
+.auth .brand img.ic { width: 56px; height: 56px; border-radius: 14px; box-shadow: 0 8px 18px rgba(31,52,40,.18); flex: none; }
+.auth .brand b { display: block; font-family: var(--f-num); font-size: 24px; font-weight: 700; color: var(--brand); line-height: 1.1; }
+.auth .brand small { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--sub); margin-top: 3px; }
+.auth .brand small img { height: 10px; width: auto; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .auth .brand small img { filter: brightness(0) invert(.85); } }
+:root[data-theme="dark"] .auth .brand small img { filter: brightness(0) invert(.85); }
+
+/* ===== หน้าเข้าสู่ระบบ แบบ 3 · ภาพเส้นทาง+เงินด้านบน ฟอร์มแผ่นล่าง ===== */
+.auth.lg3 { display: flex; flex-direction: column; align-items: center; padding: 0; background: radial-gradient(120% 70% at 50% 0%, #4E7A5F 0%, #3F654D 40%, #1F3428 100%); }
+.lg3 .lg-top { width: 100%; display: flex; flex-direction: column; align-items: center; padding: max(26px, env(safe-area-inset-top)) 20px 18px; color: #fff; text-align: center; flex: none; }
+.lg3 .lg-top b { font: 700 30px/1.15 var(--f-num); letter-spacing: .02em; }
+.lg3 .lg-top small { color: #D2DCD8; font-size: 13px; margin-top: 2px; }
+.lg3 .lg-scene { width: min(360px, 88vw); height: auto; overflow: visible; }
+.lg3 .lw { filter: drop-shadow(0 10px 16px rgba(0,0,0,.3)); }
+.lg3 .lt { animation: lgBob 1.6s ease-in-out infinite; }
+.lg3 .lc { transform-box: fill-box; transform-origin: center; animation: lgFloat 3s ease-in-out infinite; } .lg3 .lc.b { animation-delay: -1s; } .lg3 .lc.c { animation-delay: -2s; }
+.lg3 .lr { animation: lgDash 1.4s linear infinite; }
+.auth.lg3 .card.lg-sheet { width: min(440px, 100%); margin-top: auto; border-radius: 26px 26px 0 0; border: 0; padding: 26px 24px calc(26px + env(safe-area-inset-bottom)); gap: 14px; box-shadow: 0 -10px 30px rgba(0,0,0,.2); animation: lgSheet .5s cubic-bezier(.2,.9,.3,1) both; }
+.lg3 .lg-sheet h2 { font-size: 22px; }
+.lg3 .lg-chip { display: flex; gap: 8px; align-items: center; font-size: 13px; background: var(--tint); border-radius: 10px; padding: 9px 12px; color: var(--ink); }
+.lg3 .lg-chip b { font-weight: 600; margin-left: 4px; }
+.lg3 .lg-sheet .inp { height: 46px; font-size: 15px; }
+.lg3 .lg-co { height: 12px; width: auto; align-self: center; opacity: .65; margin-top: 2px; }
+@media (min-width: 761px) { .auth.lg3 { justify-content: center; } .auth.lg3 .card.lg-sheet { margin: 4px 0 40px; border-radius: 24px; padding-bottom: 26px; } }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .lg3 .lg-co { filter: brightness(0) invert(.85); } }
+:root[data-theme="dark"] .lg3 .lg-co { filter: brightness(0) invert(.85); }
+@keyframes lgBob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1.5px); } }
+@keyframes lgFloat { 0%, 100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-6px) rotate(8deg); } }
+@keyframes lgDash { to { stroke-dashoffset: -24; } }
+@keyframes lgSheet { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .lg3 * { animation: none !important; } }
+@media (max-height: 780px) { .lg3 .lg-scene { width: min(270px, 70vw); } .lg3 .lg-top { padding-bottom: 12px; } }

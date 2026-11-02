@@ -106,12 +106,13 @@ const isCust = () => ST.me && ST.me.isCustodian && isAdmin();
 
 // ===== auth screens =====
 const authEl = () => $('#auth');
-function showAuth(html) { authEl().hidden = false; authEl().innerHTML = `<div class="card">${html}</div>`; $('#stage').hidden = true; }
+const AUTH_SCENE = `<svg class="lg-scene" viewBox="0 0 360 230" aria-hidden="true"><path class="lr" d="M30 200 C 90 200, 80 120, 160 130 S 250 60, 330 70" fill="none" stroke="rgba(255,255,255,.4)" stroke-width="3" stroke-dasharray="2 10" stroke-linecap="round"/><g transform="translate(30 196)"><path d="M0-22c-6 0-10 4.5-10 10 0 7 10 16 10 16s10-9 10-16c0-5.5-4-10-10-10z" fill="#D2DCD8"/><circle cy="-12" r="3.6" fill="#3F654D"/></g><g transform="translate(160 126)"><path d="M0-22c-6 0-10 4.5-10 10 0 7 10 16 10 16s10-9 10-16c0-5.5-4-10-10-10z" fill="#D2DCD8"/><circle cy="-12" r="3.6" fill="#3F654D"/></g><g transform="translate(330 66)"><path d="M0-22c-6 0-10 4.5-10 10 0 7 10 16 10 16s10-9 10-16c0-5.5-4-10-10-10z" fill="#E9C46A"/><circle cy="-12" r="3.6" fill="#3F654D"/></g><g transform="translate(212 92) rotate(-18)"><g class="lt"><path d="M2 8h26v14H2z" fill="#fff"/><path d="M28 10h9l7 7v5H28z" fill="#fff"/><path d="M31 12h5l4.5 4.5H31z" fill="#7FA08C"/><circle cx="11" cy="23" r="4.6" fill="#1F3428"/><circle cx="35" cy="23" r="4.6" fill="#1F3428"/><circle cx="11" cy="23" r="1.8" fill="#D2DCD8"/><circle cx="35" cy="23" r="1.8" fill="#D2DCD8"/></g></g><image href="img/icon-512.png" x="130" y="150" width="70" height="70" class="lw"/><g transform="translate(240 170)"><g class="lc a"><circle r="13" fill="#E9C46A"/><circle r="10.0" fill="none" stroke="#C9A23F" stroke-width="1.6"/><text y="4.9" text-anchor="middle" font-family="Chakra Petch,sans-serif" font-weight="700" font-size="14.0" fill="#8A6A1E">฿</text></g></g><g transform="translate(268 192)"><g class="lc b"><circle r="10" fill="#E9C46A"/><circle r="7.7" fill="none" stroke="#C9A23F" stroke-width="1.6"/><text y="3.8" text-anchor="middle" font-family="Chakra Petch,sans-serif" font-weight="700" font-size="10.8" fill="#8A6A1E">฿</text></g></g><g transform="translate(96 98)"><g class="lc c"><circle r="11" fill="#E9C46A"/><circle r="8.5" fill="none" stroke="#C9A23F" stroke-width="1.6"/><text y="4.2" text-anchor="middle" font-family="Chakra Petch,sans-serif" font-weight="700" font-size="11.9" fill="#8A6A1E">฿</text></g></g></svg>`;
+function showAuth(html) { const a = authEl(); a.hidden = false; a.className = 'auth lg3'; a.innerHTML = `<div class="lg-top">${AUTH_SCENE}<b>C2-Pay</b><small>ระบบเบิกจ่าย C2TECH</small></div><div class="card lg-sheet">${html}<img class="lg-co" src="img/logo.png" alt="C2TECH"></div>`; $('#stage').hidden = true; }
 
+const authBrand = () => `<div class="brand"><img class="ic" src="img/icon-192.png" alt=""><div><b>C2-Pay</b><small>ระบบเบิกจ่าย · <img src="img/logo.png" alt="C2TECH"></small></div></div>`;
 function showLogin(msg = '') {
-  showAuth(`<img class="logo" src="img/logo.png" alt="C2TECH">
-    <div><div style="font-size:13px;color:var(--sub)">ระบบเบิกจ่าย</div><h2>เข้าสู่ระบบ C2-Pay</h2></div>
-    <div class="pwbox soft">${ms('link')}<span>ใช้ <b>ชื่อผู้ใช้และรหัสผ่านเดียวกับ C2-Calendar</b></span></div>
+  showAuth(`<h2>เข้าสู่ระบบ</h2>
+    <div class="lg-chip">${ms('link')}<span>ใช้<b>ชื่อผู้ใช้และรหัสผ่านเดียวกับ C2-Calendar</b></span></div>
     <form id="loginForm" style="display:flex;flex-direction:column;gap:10px" novalidate>
       <div class="field"><label for="lg-u">ชื่อผู้ใช้</label><input class="inp" id="lg-u" autocomplete="username" autocapitalize="none" required></div>
       <div class="field"><label for="lg-p">รหัสผ่าน</label><input class="inp" id="lg-p" type="password" autocomplete="current-password" required></div>
@@ -141,7 +142,7 @@ async function logout() {
 }
 
 function showNoPerm() {
-  showAuth(`<img class="logo" src="img/logo.png" alt="C2TECH">
+  showAuth(`
     <div style="width:52px;height:52px;border-radius:50%;background:var(--warn-bg);color:var(--warn);display:grid;place-items:center">${ms('lock_person')}</div>
     <h2 style="font-size:20px">ยังไม่ได้รับสิทธิ์ใช้ C2-Pay</h2>
     <p style="margin:0;color:var(--sub)">บัญชี <b>${esc(ST.me.name)}</b> เข้าสู่ระบบได้แล้ว แต่ยังไม่มีสิทธิ์ในระบบเบิกจ่าย ติดต่อ Admin ของ C2-Pay เพื่อขอสิทธิ์</p>
@@ -150,12 +151,12 @@ function showNoPerm() {
 
 function showSetup() {
   if (!ST.canSetup) {
-    showAuth(`<img class="logo" src="img/logo.png" alt="C2TECH"><h2 style="font-size:20px">C2-Pay ยังไม่พร้อมใช้งาน</h2>
+    showAuth(`<h2 style="font-size:20px">C2-Pay ยังไม่พร้อมใช้งาน</h2>
       <p style="margin:0;color:var(--sub)">รอ admin ของ C2-Calendar ตั้งค่าเริ่มต้น C2-Pay ก่อน แล้วค่อยเข้าใหม่</p>
       <button class="btn block" data-act="logout">${ms('logout')}ออกจากระบบ</button>`);
     return;
   }
-  showAuth(`<img class="logo" src="img/logo.png" alt="C2TECH"><h2 style="font-size:20px">ตั้งค่าเริ่มต้น C2-Pay</h2>
+  showAuth(`<h2 style="font-size:20px">ตั้งค่าเริ่มต้น C2-Pay</h2>
     <p style="margin:0;color:var(--sub)">ยังไม่มีใครตั้งค่า C2-Pay · ถ้ากดยืนยัน <b>${esc(ST.me.name)}</b> จะเป็น <b>Admin</b> และ <b>ผู้ดูแลเลขบัญชี</b> คนแรก (ส่งต่อสิทธิ์ให้คนอื่นได้ภายหลัง)</p>
     <ul style="margin:0;padding-left:20px;color:var(--sub);font-size:13.5px"><li>เริ่มใน <b>โหมดทดลองใช้</b> (ล้างข้อมูลได้)</li><li>อัตราเริ่มต้น: เบี้ยเลี้ยง 200 · ที่พัก 600 · 10 กม./ลิตร</li><li>บัญชีบริษัท: กสิกรไทย 201-1-96656-2 · สำรองจ่าย 014-9-36362-4</li></ul>
     <div class="field"><label for="su-p">ยืนยันรหัสผ่านของคุณ</label><input class="inp" id="su-p" type="password" autocomplete="current-password"></div>
@@ -165,7 +166,7 @@ function showSetup() {
 }
 
 // ===== หน้าโหลด (splash) · แสดงอย่างน้อย SPLASH_MIN_MS แล้วค่อยจางหาย =====
-const SPLASH_MIN_MS = 1800;
+const SPLASH_MIN_MS = Number(new URLSearchParams(location.search).get('splash')) || 2800; // ?splash=ms ใช้ทดสอบ
 let splashGone = false;
 const splashMsg = (t) => { const m = $('#spMsg'); if (m) m.textContent = t; };
 async function splashOff() {
@@ -181,7 +182,7 @@ async function boot() {
 }
 async function bootInner() {
   if (!getToken()) { showLogin(); return; }
-  if (splashGone) { authEl().hidden = false; authEl().innerHTML = `<div class="loading"><div class="spin"></div><span>กำลังโหลด…</span></div>`; }
+  if (splashGone) { authEl().hidden = false; authEl().className = 'auth'; authEl().innerHTML = `<div class="loading"><div class="spin"></div><span>กำลังโหลด…</span></div>`; }
   else splashMsg('กำลังโหลดข้อมูลของคุณ…');
   let r;
   try { r = await api('me'); } catch (e) { if (!e.silent) showLogin(errMsg(e)); return; }
