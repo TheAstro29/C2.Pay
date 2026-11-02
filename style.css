@@ -483,3 +483,14 @@ tfoot td { font-weight: 700; background: var(--soft); border-top: 1px solid var(
 .optbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 8px; padding: 10px 12px; border-radius: 12px; background: var(--good-bg); color: var(--good); }
 .optbar.done { background: var(--soft); color: var(--ink); }
 .optbar .ob-t { flex: 1; min-width: 200px; } .optbar .ob-t b { display: block; } .optbar .ob-t small { color: var(--sub); }
+
+/* ===== รอบ 3: เตือนช่องที่ยังไม่กรอก ===== */
+.inp.bad, .sel.bad { border-color: var(--bad) !important; box-shadow: 0 0 0 3px var(--bad-bg); }
+.ferr { display: block; color: var(--bad); font-size: 12.5px; font-weight: 500; margin-top: 4px; }
+.ferr::before { content: '! '; font-weight: 700; }
+.irow .ferr, .exrow .irow .ferr { grid-column: 1 / -1; }
+.ccard .tpill, .tcard b .tpill { vertical-align: 1px; margin-right: 2px; }
+tr.click { cursor: pointer; }
+tr.click:hover td { background: var(--tint); }
+td.in { color: var(--good); } td.out { color: var(--ink); }
+@media (max-width: 760px) { .types { grid-template-columns: repeat(2, minmax(0,1fr)); } }
