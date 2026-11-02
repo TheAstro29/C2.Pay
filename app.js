@@ -249,8 +249,8 @@ function vGeneral() {
         <button class="btn sm" style="margin-top:10px" data-act="custAdd">${ms('add')}เพิ่มลูกค้า</button></div>
     </div><div class="stack">
       ${company}
-      <div class="card"><h3>${ms('route')}คำนวณระยะทาง (OpenRouteService)<span class="r">${S.hasOrs ? '<span class="pill p-closed">ตั้งคีย์แล้ว</span>' : '<span class="pill p-pending">ยังไม่ตั้ง</span>'}</span></h3>
-        <div class="field"><label for="s-ors">API key</label><input class="inp" id="s-ors" type="password" autocomplete="off" data-ors="1" value="${esc(D.orsKey || '')}" placeholder="${S.hasOrs ? 'ตั้งไว้แล้ว · ใส่ใหม่เพื่อเปลี่ยน' : 'วางคีย์จาก openrouteservice.org'}"><span class="hint">ใช้คำนวณระยะทางตามถนนจริงจากพิกัดจุดเริ่มต้นและลูกค้า · ไม่มีคีย์ = ทีมงานกรอกระยะทางเอง</span></div></div>
+      <div class="card"><h3>${ms('route')}คำนวณระยะทาง · คีย์ OpenRouteService (ถ้ามี)<span class="r">${S.hasOrs ? '<span class="pill p-closed">ตั้งคีย์แล้ว</span>' : '<span class="pill p-mute">ไม่ใส่ก็ได้</span>'}</span></h3>
+        <div class="field"><label for="s-ors">API key</label><input class="inp" id="s-ors" type="password" autocomplete="off" data-ors="1" value="${esc(D.orsKey || '')}" placeholder="${S.hasOrs ? 'ตั้งไว้แล้ว · ใส่ใหม่เพื่อเปลี่ยน' : 'วางคีย์จาก openrouteservice.org'}"><span class="hint">ระบบคำนวณระยะทางตามถนนจริงจากพิกัดจุดเริ่มต้นและลูกค้า · ไม่มีคีย์ใช้ OSRM (แผนที่ OpenStreetMap ฟรี ไม่ต้องสมัคร) · ถ้าบริการแผนที่ล่ม ระบบประมาณจากเส้นตรง × 1.3 ให้แก้ได้</span></div></div>
       <div class="card"><h3>${ms('person_add')}สิทธิ์เริ่มต้นของบัญชีใหม่</h3><p class="formula" style="margin:0 0 8px">คนใหม่ใน C2-Calendar ได้สิทธิ์ตามนี้ทันที · Admin ของ C2-Pay ต้องตั้งเองรายคนเสมอ</p>
         <div class="fgrid" style="grid-template-columns:1fr"><div class="field"><label for="df-staff">staff ใน C2-Calendar</label>${roleSel('staff')}</div><div class="field"><label for="df-ceo">ceo ใน C2-Calendar</label>${roleSel('ceo')}</div><div class="field"><label for="df-admin">admin ใน C2-Calendar</label>${roleSel('admin')}</div></div></div>
       <div class="card" style="position:sticky;top:0"><button class="btn pri block" data-act="saveSettings">${ms('save')}บันทึกค่าทั่วไป</button><button class="btn ghost block" data-act="resetDraft" style="margin-top:6px">ยกเลิกการแก้</button></div>
@@ -490,11 +490,11 @@ function refreshRoute() {
   const f = ST.form; if (!f) return; clearTimeout(routeT);
   const stops = f.stops.map((x) => x.trim()).filter(Boolean);
   if (!stops.length) { f.kmCalc = null; f.kmWhy = ''; return; }
-  const my = ++routeSeq; f.kmLoading = true; if (ST.view === 'req') updReq(['#kmField']);
+  const my = ++routeSeq; f.kmLoading = true; const ks = $('#kmStatus'); if (ks) ks.innerHTML = '<span class="spin"></span><span>กำลังคำนวณระยะทาง…</span>';
   routeT = setTimeout(async () => {
-    try { const r = await api('route', { stops }); if (my !== routeSeq || !ST.form) return; f.kmCalc = r.km; f.kmWhy = r.why || ''; f.legs = r.legs || null; }
+    try { const r = await api('route', { stops }); if (my !== routeSeq || !ST.form) return; f.kmCalc = r.km; f.kmSrc = r.src || null; f.kmWhy = r.why || ''; f.legs = r.legs || null; if (r.src === 'est' && (!f.kmManual || f.kmAuto)) { f.kmManual = true; f.kmAuto = true; f.km = r.km; } else if (r.src !== 'est' && f.kmAuto) { f.kmManual = false; f.kmAuto = false; } }
     catch (e) { if (my === routeSeq && ST.form) { f.kmCalc = null; f.kmWhy = errMsg(e); } }
-    if (my === routeSeq && ST.form) { f.kmLoading = false; if (ST.view === 'req') (updReq(['#kmField', '.leg']), updCalc()); }
+    if (my === routeSeq && ST.form) { f.kmLoading = false; if (ST.view === 'req') setTimeout(() => { updReq(['#kmField', '.leg']); updCalc(); }, 0); }
   }, 450);
 }
 function vReq() {
@@ -516,10 +516,10 @@ function vReq() {
     <datalist id="custList">${custs.map((c) => `<option value="${esc(c.name)}">`).join('')}</datalist>
     <button class="btn sm" style="align-self:flex-start;margin-top:6px" data-act="stopAdd">${ms('add_location_alt')}เพิ่มสถานที่</button></div>`;
   const kmBox = `<div class="field full" id="kmField"><label>ระยะทางไป-กลับ</label><div class="kmbox">${ms('route')}
-      ${f.kmLoading ? '<span class="spin"></span><span>กำลังคำนวณระยะทาง…</span>' : f.kmCalc != null ? `<span>ระบบคำนวณ <b class="num">${fmt(f.kmCalc)}</b> กม. (OpenRouteService)</span>` : `<span style="color:var(--sub)">${esc(f.kmWhy || 'ใส่สถานที่เพื่อคำนวณ')}</span>`}
+      <span id="kmStatus" style="display:contents">${f.kmLoading ? '<span class="spin"></span><span>กำลังคำนวณระยะทาง…</span>' : f.kmCalc != null ? (f.kmSrc === 'est' ? `<span>ประมาณ <b class="num">${fmt(f.kmCalc)}</b> กม. <span style="color:var(--warn)">(เส้นตรง × 1.3 · บริการแผนที่ใช้ไม่ได้ตอนนี้ ตรวจแล้วแก้ได้ ไม่ต้องใส่เหตุผล)</span></span>` : `<span>ระบบคำนวณ <b class="num">${fmt(f.kmCalc)}</b> กม. (${f.kmSrc === 'osrm' ? 'OSRM · OpenStreetMap' : 'OpenRouteService'})</span>`) : `<span style="color:var(--sub)">${esc(f.kmWhy || 'ใส่สถานที่เพื่อคำนวณ')}</span>`}</span>
       ${f.kmCalc != null ? `<label class="ckl" style="margin-left:auto"><input type="checkbox" id="f-kmman" data-fchk="kmManual" ${f.kmManual ? 'checked' : ''}> แก้ระยะเอง</label>` : ''}</div>
       ${f.kmManual || f.kmCalc == null ? `<div class="fgrid" style="margin-top:8px"><div class="field"><label for="f-km">ระยะทางไป-กลับ (กม.)</label><input class="inp num" type="number" inputmode="decimal" id="f-km" data-f="km" value="${esc(f.km)}"></div>
-        <div class="field"><label for="f-kmr">เหตุผล${f.kmCalc != null ? ' <span style="color:var(--bad)">*</span>' : ''}</label><input class="inp" id="f-kmr" data-f="kmReason" value="${esc(f.kmReason)}" placeholder="${f.kmCalc != null ? 'เช่น ถนนปิด ต้องอ้อม' : 'เช่น วัดจากไมล์รถ'}"></div></div>` : ''}</div>`;
+        <div class="field"><label for="f-kmr">เหตุผล${f.kmCalc != null && f.kmSrc !== 'est' ? ' <span style="color:var(--bad)">*</span>' : ' (ถ้ามี)'}</label><input class="inp" id="f-kmr" data-f="kmReason" value="${esc(f.kmReason)}" placeholder="${f.kmCalc != null ? 'เช่น ถนนปิด ต้องอ้อม' : 'เช่น วัดจากไมล์รถ'}"></div></div>` : ''}</div>`;
   const hotel = k.nights ? `<div class="field full" id="hotelField"><label class="ckl"><input type="checkbox" id="f-hov" data-fchk="hotelOver" ${f.hotelOver ? 'checked' : ''}> ขอที่พักเกินอัตรา (${fmt(s.hotel)} บาท/ห้อง/คืน)</label>
       ${f.hotelOver ? `<div class="hotelover"><div class="fgrid"><div class="field"><label for="f-hr">ราคาที่ขอ (บาท/ห้อง/คืน)</label><input class="inp num" type="number" id="f-hr" data-f="hotelRate" value="${esc(f.hotelRate)}">${Number(f.hotelRate) > s.hotelWarn ? `<span class="hint" style="color:var(--bad)">เกินยอดเตือน ${fmt(s.hotelWarn)}</span>` : ''}</div><div class="field"><label for="f-hre">เหตุผล</label><input class="inp" id="f-hre" data-f="hotelReason" value="${esc(f.hotelReason)}" placeholder="เช่น ใกล้หน้างาน ห้องอัตราปกติเต็ม"></div></div></div>` : ''}</div>` : '';
   const extras = `<div class="field full"><label>ค่าใช้จ่ายอื่น (ถ้ามี) · ตอนเคลียร์ต้องแนบใบเสร็จทุกรายการ</label><div class="items">${f.extras.map((e, i) => `<div class="irow"><input class="inp" id="f-exd-${i}" data-ex="${i}:desc" value="${esc(e.desc)}" placeholder="รายการ เช่น ค่าทางด่วน"><select class="sel" id="f-exc-${i}" data-ex="${i}:cat">${ST.settings.cats.map((c) => `<option ${c === e.cat ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select><input class="inp num" type="number" id="f-exa-${i}" data-ex="${i}:amount" value="${esc(e.amount)}" placeholder="บาท"><button class="xbtn" data-act="exDel" data-v="${i}" aria-label="ลบรายการ">${ms('close', 'style="font-size:18px"')}</button></div>`).join('')}
@@ -557,7 +557,7 @@ function drawDoc(no) {
       <div><span>ที่พัก<br><span class="f">${p.nights} คืน × ${p.rooms} ห้อง × ${fmt(p.rate)}${p.hotelOver ? ` <span class="overpill">เกินอัตรา</span><br>เหตุผล: ${esc(p.hotelReason)}` : ''}</span></span><b>${fmt(p.hotel)}</b></div>
       ${(p.extras || []).map((e) => `<div><span>${esc(e.desc)}<br><span class="f">${esc(e.cat)}</span></span><b>${fmt(e.amount)}</b></div>`).join('')}
       <div class="tot"><span>ยอดเบิก</span><b>${fmt(d.requested)}</b></div></div>`;
-  const km = d.kmCalc != null ? (d.kmReason ? `<div class="banner warn">${ms('route')}<span>ระบบคำนวณ <b>${fmt(d.kmCalc)}</b> กม. · ขอ <b>${fmt(p.km)}</b> กม. · เหตุผล: ${esc(d.kmReason)}</span></div>` : '') : `<div class="banner info">${ms('route')}<span>ระยะทางกรอกเอง ${fmt(p.km)} กม.${d.kmReason ? ` · ${esc(d.kmReason)}` : ''}</span></div>`;
+  const km = d.kmCalc != null && d.kmSrc === 'est' ? `<div class="banner warn">${ms('route')}<span>ระยะทางประมาณจากเส้นตรง ${fmt(d.kmCalc)} กม. (บริการแผนที่ใช้ไม่ได้ตอนส่ง) · ขอ <b>${fmt(p.km)}</b> กม.${d.kmReason ? ` · ${esc(d.kmReason)}` : ''} · ตรวจก่อนอนุมัติ</span></div>` : d.kmCalc != null ? (d.kmReason ? `<div class="banner warn">${ms('route')}<span>ระบบคำนวณ <b>${fmt(d.kmCalc)}</b> กม. · ขอ <b>${fmt(p.km)}</b> กม. · เหตุผล: ${esc(d.kmReason)}</span></div>` : '') : `<div class="banner info">${ms('route')}<span>ระยะทางกรอกเอง ${fmt(p.km)} กม.${d.kmReason ? ` · ${esc(d.kmReason)}` : ''}</span></div>`;
   const act = actionsFor(d, lead);
   const actual = d.actual ? `<div class="card"><h3>${ms('fact_check')}ผลเคลียร์</h3><div class="lines"><div><span>น้ำมันจริง</span><b>${fmt(d.actual.fuel)}</b></div><div><span>เบี้ยเลี้ยง ${d.actual.people} คน × ${d.actual.days} วัน</span><b>${fmt(d.actual.allowance)}</b></div><div><span>ที่พัก ${d.actual.nights} คืน${d.actual.hotelExcess > 0 ? `<br><span class="f">เกินที่อนุมัติ ${fmt(d.actual.hotelExcess)} · ${d.actual.hotelExApproved ? 'อนุมัติแล้ว' : 'ไม่คืนส่วนนี้'}</span>` : ''}</span><b>${fmt(d.actual.hotel)}</b></div>${(d.actual.extras || []).map((e) => `<div><span>${esc(e.desc)}${e.why ? `<br><span class="f">ไม่มีใบเสร็จ: ${esc(e.why)}</span>` : ''}</span><b>${fmt(e.counted)}</b></div>`).join('')}<div class="tot"><span>ใช้จริง</span><b>${fmt(d.actual.total)}</b></div></div>
       <div class="diffbox ${d.diff < 0 ? 'refund' : d.diff > 0 ? 'topup' : 'even'}" style="margin-top:10px"><span>${d.diff < 0 ? 'ทีมงานคืนเงิน' : d.diff > 0 ? 'บริษัทจ่ายเพิ่ม' : 'พอดี'}</span><b>${fmt(Math.abs(d.diff))} บาท</b></div>
@@ -812,7 +812,7 @@ async function trvClick(a, v, b) {
     if (!f.title.trim()) { toast('ใส่ชื่องาน', 'error'); return true; }
     if (!f.stops.some((x) => x.trim())) { toast('เพิ่มสถานที่อย่างน้อย 1 แห่ง', 'error'); return true; }
     if (!(k.km > 0)) { toast('ใส่ระยะทางไป-กลับ', 'error'); return true; }
-    if (f.kmManual && f.kmCalc != null && Math.abs(k.km - f.kmCalc) >= 0.5 && !f.kmReason.trim()) { toast('ใส่เหตุผลที่แก้ระยะทาง', 'error'); return true; }
+    if (f.kmManual && f.kmCalc != null && f.kmSrc !== 'est' && Math.abs(k.km - f.kmCalc) >= 0.5 && !f.kmReason.trim()) { toast('ใส่เหตุผลที่แก้ระยะทาง', 'error'); return true; }
     await busy(b, async () => {
       const form = { editNo: f.editNo, staffId: f.staffId, travelerIds: f.travelerIds, title: f.title, go: f.go, back: f.back, stops: f.stops.map((x) => x.trim()).filter(Boolean), km: k.km, kmReason: f.kmManual || f.kmCalc == null ? f.kmReason : '', rooms: f.rooms, hotelOver: f.hotelOver, hotelRate: f.hotelRate, hotelReason: f.hotelReason, extras: f.extras, price: f.price };
       const r = await api('trvSubmit', { form }); ST.form = null; await reloadTrv();
@@ -883,7 +883,7 @@ document.addEventListener('change', async (e) => {
   try {
     if (el.id === 'f-addtrav' && el.value) { ST.form.travelerIds.push(el.value); render(); return; }
     if (el.id === 'f-staff') { ST.form.staffId = el.value; ST.form.travelerIds = ST.form.travelerIds.filter((x) => x !== el.value); render(); return; }
-    if (el.dataset.fchk) { ST.form[el.dataset.fchk] = el.checked; if (el.dataset.fchk === 'kmManual' && el.checked && !ST.form.km) ST.form.km = ST.form.kmCalc; render(); return; }
+    if (el.dataset.fchk) { ST.form[el.dataset.fchk] = el.checked; if (el.dataset.fchk === 'kmManual') ST.form.kmAuto = false; if (el.dataset.fchk === 'kmManual' && el.checked && !ST.form.km) ST.form.km = ST.form.kmCalc; render(); return; }
     if (el.dataset.stop !== undefined) { refreshRoute(); return; }
     if (el.id === 'f-go' || el.id === 'f-back') { (updReq(['#hotelField']), updCalc()); return; }
     if (el.dataset.ex) { updCalc(); return; }
@@ -899,7 +899,7 @@ document.addEventListener('change', async (e) => {
 });
 document.addEventListener('input', (e) => {
   const el = e.target;
-  if (ST.form && el.dataset.f) { const k = el.dataset.f; ST.form[k] = el.value; if (['km', 'rooms', 'hotelRate'].includes(k)) updCalc(); return; }
+  if (ST.form && el.dataset.f) { const k = el.dataset.f; ST.form[k] = el.value; if (k === 'km') ST.form.kmAuto = false; if (['km', 'rooms', 'hotelRate'].includes(k)) updCalc(); return; }
   if (ST.form && el.dataset.stop !== undefined) { ST.form.stops[+el.dataset.stop] = el.value; return; }
   if (ST.form && el.dataset.ex) { const [i, key] = el.dataset.ex.split(':'); ST.form.extras[+i][key] = el.value; if (key === 'amount') updCalc(); return; }
   if (el.id === 'cq') { ST.claimQ = el.value; const pos = el.selectionStart; render(); const n = $('#cq'); n.focus(); n.setSelectionRange(pos, pos); return; }
@@ -912,7 +912,8 @@ document.addEventListener('input', (e) => {
 function updReq(sels) {
   const html = ST.view === 'req' ? vReq() : ST.view === 'clr' ? vClr() : null; if (!html) return;
   const tmp = document.createElement('div'); tmp.innerHTML = html;
-  sels.forEach((sel) => { const nws = tmp.querySelectorAll(sel), olds = $('#view').querySelectorAll(sel); olds.forEach((o, i) => { if (nws[i]) o.replaceWith(nws[i]); }); });
+  const act = document.activeElement;
+  sels.forEach((sel) => { const nws = tmp.querySelectorAll(sel), olds = $('#view').querySelectorAll(sel); olds.forEach((o, i) => { if (nws[i] && !(act && o.contains(act) && act.matches('input,select,textarea'))) o.replaceWith(nws[i]); }); });
 }
 function updCalc() {
   const html = ST.view === 'req' ? vReq() : ST.view === 'clr' ? vClr() : null; if (!html) return;
