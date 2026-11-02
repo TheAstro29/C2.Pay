@@ -494,3 +494,18 @@ tr.click { cursor: pointer; }
 tr.click:hover td { background: var(--tint); }
 td.in { color: var(--good); } td.out { color: var(--ink); }
 @media (max-width: 760px) { .types { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+
+/* ===== รอบ 4: ใบเสนอ CEO · พิมพ์ A4 ===== */
+#printv { position: fixed; inset: 0; z-index: 200; }
+#printv .pages { align-items: center; }
+.ckl.bad { outline: 2px solid var(--bad); outline-offset: 2px; border-radius: 6px; }
+@media print {
+  @page { size: A4; margin: 0; }
+  html, body { background: #fff !important; }
+  body > *:not(#printv) { display: none !important; }
+  #printv { position: static; display: block !important; background: #fff; }
+  #printv .pbar { display: none !important; }
+  #printv .pages { display: block; padding: 0; overflow: visible; }
+  #printv .a4 { box-shadow: none !important; margin: 0 !important; box-sizing: border-box; width: 210mm; min-height: 296mm; page-break-after: always; break-after: page; }
+  #printv .a4:last-child { page-break-after: auto; break-after: auto; }
+}
