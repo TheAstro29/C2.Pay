@@ -466,3 +466,15 @@ tfoot td { font-weight: 700; background: var(--soft); border-top: 1px solid var(
 .custrow { display: grid; grid-template-columns: 110px minmax(0,1fr) auto; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px dashed var(--line); }
 .custrow:last-child { border-bottom: 0; }
 @container app (max-width: 760px) { .custrow { grid-template-columns: minmax(0,1fr) auto; } .custrow .ll { grid-column: 1 / -1; } }
+
+/* ค้นหาสถานที่ (ลูกค้า + Google Maps) */
+.stop { position: relative; }
+.ta { position: absolute; left: 34px; right: 0; top: calc(100% - 2px); z-index: 30; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,.15); padding: 6px; display: flex; flex-direction: column; gap: 2px; max-height: 340px; overflow-y: auto; }
+.field > .ta { left: 0; top: 100%; }
+.ta-h { color: var(--sub); padding: 4px 10px 2px; font-size: 12px; }
+.ta-i { display: flex; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 8px; cursor: pointer; font-size: 14px; }
+.ta-i.on, .ta-i[data-ta]:hover { background: var(--tint); }
+.ta-t { flex: 1; min-width: 0; } .ta-t b { font-weight: 600; display: block; } .ta-t small { color: var(--sub); font-size: 12px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ta-pw { font-size: 11px; color: var(--sub); text-align: right; padding: 2px 8px; }
+.ta-ok { position: absolute; right: 108px; top: 50%; transform: translateY(-50%); color: var(--good); pointer-events: none; }
+@container app (max-width: 760px) { .ta-ok { right: 96px; } }

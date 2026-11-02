@@ -243,14 +243,18 @@ function vGeneral() {
         <div class="chips">${D.cats.map((c, i) => `<span class="chip">${esc(c)}<button class="btn sm ghost" style="height:20px;padding:0 2px" data-act="catDel" data-v="${i}" aria-label="ลบหมวด ${esc(c)}">${ms('close', 'style="font-size:16px"')}</button></span>`).join('')}</div>
         <div style="display:flex;gap:8px;margin-top:10px"><input class="inp" id="cat-new" placeholder="เพิ่มหมวดใหม่" style="flex:1"><button class="btn sm" data-act="catAdd">${ms('add')}เพิ่ม</button></div></div>
       <div class="card"><h3>${ms('store')}ลูกค้า / สถานที่<span class="r">${D.customers.length}</span></h3>
+        ${S.hasGmaps ? `<div class="field" style="margin-bottom:10px;position:relative"><label for="cust-q">เพิ่มลูกค้าจาก Google Maps (ได้พิกัดอัตโนมัติ)</label><input class="inp" id="cust-q" placeholder="พิมพ์ชื่อโรงสี / สถานที่" autocomplete="off" role="combobox" aria-controls="ta-cust" aria-expanded="false"><div class="ta" id="ta-cust" role="listbox" hidden></div></div>` : ''}
         <p class="formula" style="margin:0 0 8px">พิกัด (lat, lng) ใช้คำนวณระยะทาง · คัดลอกจาก Google Maps (คลิกขวาที่จุด → ตัวเลขแรก) · เว้นว่างได้ แล้วกรอกระยะทางเองในใบเบิก</p>
         <div class="custrow"><input class="inp ll" aria-label="จุดเริ่มต้น" data-home="name" value="${esc(D.home.name)}"><span style="display:flex;gap:6px"><input class="inp num" style="width:96px" aria-label="ละติจูดจุดเริ่มต้น" placeholder="lat" data-home="lat" value="${D.home.lat ?? ''}"><input class="inp num" style="width:96px" aria-label="ลองจิจูดจุดเริ่มต้น" placeholder="lng" data-home="lng" value="${D.home.lng ?? ''}"></span><span class="pill p-closed">จุดเริ่มต้น</span></div>
         ${cust}
         <button class="btn sm" style="margin-top:10px" data-act="custAdd">${ms('add')}เพิ่มลูกค้า</button></div>
     </div><div class="stack">
       ${company}
-      <div class="card"><h3>${ms('route')}คำนวณระยะทาง · คีย์ OpenRouteService (ถ้ามี)<span class="r">${S.hasOrs ? '<span class="pill p-closed">ตั้งคีย์แล้ว</span>' : '<span class="pill p-mute">ไม่ใส่ก็ได้</span>'}</span></h3>
-        <div class="field"><label for="s-ors">API key</label><input class="inp" id="s-ors" type="password" autocomplete="off" data-ors="1" value="${esc(D.orsKey || '')}" placeholder="${S.hasOrs ? 'ตั้งไว้แล้ว · ใส่ใหม่เพื่อเปลี่ยน' : 'วางคีย์จาก openrouteservice.org'}"><span class="hint">ระบบคำนวณระยะทางตามถนนจริงจากพิกัดจุดเริ่มต้นและลูกค้า · ไม่มีคีย์ใช้ OSRM (แผนที่ OpenStreetMap ฟรี ไม่ต้องสมัคร) · ถ้าบริการแผนที่ล่ม ระบบประมาณจากเส้นตรง × 1.3 ให้แก้ได้</span></div></div>
+      <div class="card"><h3>${ms('map')}Google Maps API<span class="r">${S.hasGmaps ? '<span class="pill p-closed">ตั้งคีย์แล้ว</span>' : '<span class="pill p-pending">ยังไม่ตั้ง</span>'}</span></h3>
+        <div class="field"><label for="s-gm">API key (Places API New + Routes API)</label><input class="inp" id="s-gm" type="password" autocomplete="off" data-gm="1" value="${esc(D.gmapsKey || '')}" placeholder="${S.hasGmaps ? 'ตั้งไว้แล้ว · ใส่ใหม่เพื่อเปลี่ยน' : 'วางคีย์จาก Google Cloud'}"></div>
+        ${S.hasGmaps ? (ST.gmu ? `<div class="lines" style="margin-top:8px"><div><span>ค้นหาสถานที่ เดือนนี้</span><b class="num">${fmtN(ST.gmu.ac)} / ${fmtN(ST.gmu.cap)}</b></div><div><span>ดึงพิกัด เดือนนี้</span><b class="num">${fmtN(ST.gmu.details)} / ${fmtN(ST.gmu.cap)}</b></div><div><span>คำนวณเส้นทาง เดือนนี้</span><b class="num">${fmtN(ST.gmu.routes)} / ${fmtN(ST.gmu.cap)}</b></div></div>` : (loadGmu(), '<div class="loading" style="padding:10px"><div class="spin"></div></div>')) : ''}
+        <p class="formula" style="margin:8px 0 0">ระบบหยุดเรียก Google เมื่อถึง 9,000 ครั้ง/เดือน/บริการ (ฟรี 10,000) แล้วใช้ OSRM หรือกรอกระยะเองแทน · ไม่มีคีย์ = ใช้ OSRM</p>
+        <details style="margin-top:8px"><summary style="cursor:pointer;color:var(--sub);font-size:13px">คีย์ OpenRouteService (ไม่ต้องใส่)</summary><div class="field" style="margin-top:6px"><label for="s-ors">API key</label><input class="inp" id="s-ors" type="password" autocomplete="off" data-ors="1" value="${esc(D.orsKey || '')}" placeholder="${S.hasOrs ? 'ตั้งไว้แล้ว' : 'ไม่บังคับ'}"></div></details></div>
       <div class="card"><h3>${ms('person_add')}สิทธิ์เริ่มต้นของบัญชีใหม่</h3><p class="formula" style="margin:0 0 8px">คนใหม่ใน C2-Calendar ได้สิทธิ์ตามนี้ทันที · Admin ของ C2-Pay ต้องตั้งเองรายคนเสมอ</p>
         <div class="fgrid" style="grid-template-columns:1fr"><div class="field"><label for="df-staff">staff ใน C2-Calendar</label>${roleSel('staff')}</div><div class="field"><label for="df-ceo">ceo ใน C2-Calendar</label>${roleSel('ceo')}</div><div class="field"><label for="df-admin">admin ใน C2-Calendar</label>${roleSel('admin')}</div></div></div>
       <div class="card" style="position:sticky;top:0"><button class="btn pri block" data-act="saveSettings">${ms('save')}บันทึกค่าทั่วไป</button><button class="btn ghost block" data-act="resetDraft" style="margin-top:6px">ยกเลิกการแก้</button></div>
@@ -474,9 +478,9 @@ function vClearList() {
 // ---------- ฟอร์มขอเบิก ----------
 function newForm(d) {
   const s = set();
-  if (d) return { editNo: d.no, staffId: d.staffId, travelerIds: d.travelers.map((t) => t.id).filter((x) => x !== d.staffId), title: d.title, go: d.go, back: d.back, stops: [...d.stops], kmManual: !!d.kmReason || d.kmCalc == null, km: d.plan.km, kmReason: d.kmReason || '', kmCalc: d.kmCalc, kmWhy: '', rooms: d.plan.rooms, hotelOver: !!d.plan.hotelOver, hotelRate: d.plan.hotelRate || '', hotelReason: d.plan.hotelReason || '', extras: (d.plan.extras || []).map((e) => ({ ...e })), price: d.plan.price };
+  if (d) return { editNo: d.no, staffId: d.staffId, travelerIds: d.travelers.map((t) => t.id).filter((x) => x !== d.staffId), title: d.title, go: d.go, back: d.back, stops: [...d.stops], geo: [...(d.geo || d.stops.map(() => null))], kmManual: !!d.kmReason || d.kmCalc == null, km: d.plan.km, kmReason: d.kmReason || '', kmCalc: d.kmCalc, kmWhy: '', rooms: d.plan.rooms, hotelOver: !!d.plan.hotelOver, hotelRate: d.plan.hotelRate || '', hotelReason: d.plan.hotelReason || '', extras: (d.plan.extras || []).map((e) => ({ ...e })), price: d.plan.price };
   const t = todayTH();
-  return { staffId: ST.me.id, travelerIds: [], title: '', go: addDays(t, 1), back: addDays(t, 2), stops: [''], kmManual: false, km: '', kmReason: '', kmCalc: null, kmWhy: '', rooms: 1, hotelOver: false, hotelRate: '', hotelReason: '', extras: [], price: s.fuelPrice };
+  return { staffId: ST.me.id, travelerIds: [], title: '', go: addDays(t, 1), back: addDays(t, 2), stops: [''], geo: [null], kmManual: false, km: '', kmReason: '', kmCalc: null, kmWhy: '', rooms: 1, hotelOver: false, hotelRate: '', hotelReason: '', extras: [], price: s.fuelPrice };
 }
 function calcForm(f) {
   const s = set(), ddays = f.go && f.back && f.back >= f.go ? dayDiff(f.go, f.back) + 1 : 1, nights = Math.max(0, ddays - 1), people = 1 + f.travelerIds.filter((x) => x !== f.staffId).length;
@@ -488,11 +492,12 @@ function calcForm(f) {
 let routeT = null, routeSeq = 0;
 function refreshRoute() {
   const f = ST.form; if (!f) return; clearTimeout(routeT);
-  const stops = f.stops.map((x) => x.trim()).filter(Boolean);
+  const idx = f.stops.map((x, i) => (x.trim() ? i : -1)).filter((i) => i >= 0); const stops = idx.map((i) => f.stops[i].trim()), geo = idx.map((i) => f.geo[i] || null);
   if (!stops.length) { f.kmCalc = null; f.kmWhy = ''; return; }
-  const my = ++routeSeq; f.kmLoading = true; const ks = $('#kmStatus'); if (ks) ks.innerHTML = '<span class="spin"></span><span>กำลังคำนวณระยะทาง…</span>';
+  const my = ++routeSeq; f.kmLoading = true;
   routeT = setTimeout(async () => {
-    try { const r = await api('route', { stops }); if (my !== routeSeq || !ST.form) return; f.kmCalc = r.km; f.kmSrc = r.src || null; f.kmWhy = r.why || ''; f.legs = r.legs || null; if (r.src === 'est' && (!f.kmManual || f.kmAuto)) { f.kmManual = true; f.kmAuto = true; f.km = r.km; } else if (r.src !== 'est' && f.kmAuto) { f.kmManual = false; f.kmAuto = false; } }
+    const ks = $('#kmStatus'); if (ks && my === routeSeq) ks.innerHTML = '<span class="spin"></span><span>กำลังคำนวณระยะทาง…</span>';
+    try { const r = await api('route', { stops, geo }); if (my !== routeSeq || !ST.form) return; f.kmCalc = r.km; f.kmSrc = r.src || null; f.kmWhy = r.why || ''; f.legs = r.legs || null; f.pts = r.pts || null; if (r.src === 'est' && (!f.kmManual || f.kmAuto)) { f.kmManual = true; f.kmAuto = true; f.km = r.km; } else if (r.src !== 'est' && f.kmAuto) { f.kmManual = false; f.kmAuto = false; } }
     catch (e) { if (my === routeSeq && ST.form) { f.kmCalc = null; f.kmWhy = errMsg(e); } }
     if (my === routeSeq && ST.form) { f.kmLoading = false; if (ST.view === 'req') setTimeout(() => { updReq(['#kmField', '.leg']); updCalc(); }, 0); }
   }, 450);
@@ -510,13 +515,13 @@ function vReq() {
   const custs = ST.settings.customers || [];
   const stops = `<div class="field full"><label>สถานที่ (ตามลำดับที่ไป)</label><div class="route">
       <div class="stop ro"><span class="pin home">${ms('home', 'style="font-size:15px"')}</span><span>${esc(ST.settings.home.name)}</span><span></span></div>
-      ${f.stops.map((x, i) => `<div class="stop"><span class="pin">${i + 1}</span><input class="inp" list="custList" id="f-stop-${i}" data-stop="${i}" value="${esc(x)}" placeholder="ชื่อลูกค้า / สถานที่" aria-label="สถานที่ที่ ${i + 1}">
+      ${f.stops.map((x, i) => `<div class="stop"><span class="pin">${i + 1}</span><input class="inp" id="f-stop-${i}" data-stop="${i}" value="${esc(x)}" placeholder="พิมพ์ชื่อลูกค้า / สถานที่ แล้วเลือกจากรายการ" aria-label="สถานที่ที่ ${i + 1}" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="ta-${i}" aria-expanded="false">${f.geo[i] ? `<span class="ta-ok" title="ได้พิกัดจาก Google Maps">${ms('location_on', 'style="font-size:16px"')}</span>` : ''}<div class="ta" id="ta-${i}" role="listbox" hidden></div>
         <span class="leg" id="leg-${i}">${f.legs && f.legs[i] != null && f.kmCalc != null ? fmt(f.legs[i]) + ' กม.' : ''}</span>${f.stops.length > 1 ? `<button class="xbtn" data-act="stopDel" data-v="${i}" aria-label="ลบสถานที่ที่ ${i + 1}">${ms('close', 'style="font-size:18px"')}</button>` : '<span></span>'}</div>`).join('')}
       <div class="stop ro"><span class="pin home">${ms('home', 'style="font-size:15px"')}</span><span>กลับ ${esc(ST.settings.home.name)}</span><span class="leg" id="leg-back">${f.legs && f.kmCalc != null ? fmt(f.legs[f.legs.length - 1]) + ' กม.' : ''}</span></div></div>
     <datalist id="custList">${custs.map((c) => `<option value="${esc(c.name)}">`).join('')}</datalist>
     <button class="btn sm" style="align-self:flex-start;margin-top:6px" data-act="stopAdd">${ms('add_location_alt')}เพิ่มสถานที่</button></div>`;
   const kmBox = `<div class="field full" id="kmField"><label>ระยะทางไป-กลับ</label><div class="kmbox">${ms('route')}
-      <span id="kmStatus" style="display:contents">${f.kmLoading ? '<span class="spin"></span><span>กำลังคำนวณระยะทาง…</span>' : f.kmCalc != null ? (f.kmSrc === 'est' ? `<span>ประมาณ <b class="num">${fmt(f.kmCalc)}</b> กม. <span style="color:var(--warn)">(เส้นตรง × 1.3 · บริการแผนที่ใช้ไม่ได้ตอนนี้ ตรวจแล้วแก้ได้ ไม่ต้องใส่เหตุผล)</span></span>` : `<span>ระบบคำนวณ <b class="num">${fmt(f.kmCalc)}</b> กม. (${f.kmSrc === 'osrm' ? 'OSRM · OpenStreetMap' : 'OpenRouteService'})</span>`) : `<span style="color:var(--sub)">${esc(f.kmWhy || 'ใส่สถานที่เพื่อคำนวณ')}</span>`}</span>
+      <span id="kmStatus" style="display:contents">${f.kmLoading ? '<span class="spin"></span><span>กำลังคำนวณระยะทาง…</span>' : f.kmCalc != null ? (f.kmSrc === 'est' ? `<span>ประมาณ <b class="num">${fmt(f.kmCalc)}</b> กม. <span style="color:var(--warn)">(เส้นตรง × 1.3 · บริการแผนที่ใช้ไม่ได้ตอนนี้ ตรวจแล้วแก้ได้ ไม่ต้องใส่เหตุผล)</span></span>` : `<span>ระบบคำนวณ <b class="num">${fmt(f.kmCalc)}</b> กม. (${f.kmSrc === 'google' ? 'Google Maps' : f.kmSrc === 'osrm' ? 'OSRM · OpenStreetMap' : 'OpenRouteService'})</span>${f.pts ? `<a class="btn sm ghost" href="${gmLink(f.pts)}" target="_blank" rel="noopener">${ms('map')}ดูเส้นทาง</a>` : ''}`) : `<span style="color:var(--sub)">${esc(f.kmWhy || 'ใส่สถานที่เพื่อคำนวณ')}</span>`}</span>
       ${f.kmCalc != null ? `<label class="ckl" style="margin-left:auto"><input type="checkbox" id="f-kmman" data-fchk="kmManual" ${f.kmManual ? 'checked' : ''}> แก้ระยะเอง</label>` : ''}</div>
       ${f.kmManual || f.kmCalc == null ? `<div class="fgrid" style="margin-top:8px"><div class="field"><label for="f-km">ระยะทางไป-กลับ (กม.)</label><input class="inp num" type="number" inputmode="decimal" id="f-km" data-f="km" value="${esc(f.km)}"></div>
         <div class="field"><label for="f-kmr">เหตุผล${f.kmCalc != null && f.kmSrc !== 'est' ? ' <span style="color:var(--bad)">*</span>' : ' (ถ้ามี)'}</label><input class="inp" id="f-kmr" data-f="kmReason" value="${esc(f.kmReason)}" placeholder="${f.kmCalc != null ? 'เช่น ถนนปิด ต้องอ้อม' : 'เช่น วัดจากไมล์รถ'}"></div></div>` : ''}</div>`;
@@ -559,6 +564,7 @@ function drawDoc(no) {
       <div class="tot"><span>ยอดเบิก</span><b>${fmt(d.requested)}</b></div></div>`;
   const km = d.kmCalc != null && d.kmSrc === 'est' ? `<div class="banner warn">${ms('route')}<span>ระยะทางประมาณจากเส้นตรง ${fmt(d.kmCalc)} กม. (บริการแผนที่ใช้ไม่ได้ตอนส่ง) · ขอ <b>${fmt(p.km)}</b> กม.${d.kmReason ? ` · ${esc(d.kmReason)}` : ''} · ตรวจก่อนอนุมัติ</span></div>` : d.kmCalc != null ? (d.kmReason ? `<div class="banner warn">${ms('route')}<span>ระบบคำนวณ <b>${fmt(d.kmCalc)}</b> กม. · ขอ <b>${fmt(p.km)}</b> กม. · เหตุผล: ${esc(d.kmReason)}</span></div>` : '') : `<div class="banner info">${ms('route')}<span>ระยะทางกรอกเอง ${fmt(p.km)} กม.${d.kmReason ? ` · ${esc(d.kmReason)}` : ''}</span></div>`;
   const act = actionsFor(d, lead);
+  const mapBtn = d.routePts ? `<a class="btn sm" href="${gmLink(d.routePts)}" target="_blank" rel="noopener">${ms('map')}เปิดเส้นทางใน Google Maps</a>` : '';
   const actual = d.actual ? `<div class="card"><h3>${ms('fact_check')}ผลเคลียร์</h3><div class="lines"><div><span>น้ำมันจริง</span><b>${fmt(d.actual.fuel)}</b></div><div><span>เบี้ยเลี้ยง ${d.actual.people} คน × ${d.actual.days} วัน</span><b>${fmt(d.actual.allowance)}</b></div><div><span>ที่พัก ${d.actual.nights} คืน${d.actual.hotelExcess > 0 ? `<br><span class="f">เกินที่อนุมัติ ${fmt(d.actual.hotelExcess)} · ${d.actual.hotelExApproved ? 'อนุมัติแล้ว' : 'ไม่คืนส่วนนี้'}</span>` : ''}</span><b>${fmt(d.actual.hotel)}</b></div>${(d.actual.extras || []).map((e) => `<div><span>${esc(e.desc)}${e.why ? `<br><span class="f">ไม่มีใบเสร็จ: ${esc(e.why)}</span>` : ''}</span><b>${fmt(e.counted)}</b></div>`).join('')}<div class="tot"><span>ใช้จริง</span><b>${fmt(d.actual.total)}</b></div></div>
       <div class="diffbox ${d.diff < 0 ? 'refund' : d.diff > 0 ? 'topup' : 'even'}" style="margin-top:10px"><span>${d.diff < 0 ? 'ทีมงานคืนเงิน' : d.diff > 0 ? 'บริษัทจ่ายเพิ่ม' : 'พอดี'}</span><b>${fmt(Math.abs(d.diff))} บาท</b></div>
       ${(d.actual.files || []).length ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">${d.actual.files.map((f, i) => fileBtn(f, `ใบเสร็จ ${i + 1}`)).join('')}</div>` : ''}</div>` : '';
@@ -569,7 +575,7 @@ function drawDoc(no) {
       ${d.rejectNote && d.status === 'rejected' ? `<div class="banner bad">${ms('block')}<span>${d.cancelled ? 'ยกเลิก' : 'ไม่อนุมัติ'}: <b>${esc(d.rejectNote)}</b></span></div>` : ''}
       ${d.clearReturn && d.status === 'open' ? `<div class="banner warn">${ms('edit_note')}<span>ส่งเคลียร์กลับให้แก้: <b>${esc(d.clearReturn)}</b></span></div>` : ''}
       <div class="card"><b style="font-size:16px">${esc(d.title)}</b><dl class="kv" style="margin-top:8px"><dt>ผู้รับเงิน</dt><dd>${esc(d.staffName)}</dd><dt>ผู้เดินทาง</dt><dd>${d.travelers.map((t) => esc(t.name)).join(', ')}</dd><dt>วันที่</dt><dd>${dRange(d.go, d.back)} (${p.days} วัน ${p.nights} คืน)</dd><dt>เส้นทาง</dt><dd>${esc(ST.settings.home.name.split(' · ')[0])} → ${d.stops.map(esc).join(' → ')} → กลับ</dd><dt>จ่ายโดย</dt><dd>${d.paidFrom === 'PC' ? 'เงินสดย่อย' : d.paidFrom === 'BANK' ? 'โอนเข้าบัญชี' : '—'}</dd></dl>${pay}</div>
-      ${km}<div class="card"><h3>${ms('calculate')}ยอดที่ขอเบิก</h3>${lines}</div>${actual}
+      ${km}${mapBtn ? `<div>${mapBtn}${d.kmSrc ? ` <span class="formula">ระยะจาก ${d.kmSrc === 'google' ? 'Google Maps' : d.kmSrc === 'osrm' ? 'OSRM' : d.kmSrc === 'ors' ? 'OpenRouteService' : 'ค่าประมาณ'}</span>` : ''}</div>` : ''}<div class="card"><h3>${ms('calculate')}ยอดที่ขอเบิก</h3>${lines}</div>${actual}
       <div class="card"><h3>${ms('history')}ความเคลื่อนไหว</h3><ul class="tl">${d.timeline.map((t) => `<li>${esc(t.text)}${t.amt != null ? ` · <b class="num">${fmt(t.amt)}</b>` : ''}<small>${dtTime(t.at)} · ${esc(t.byName)}</small></li>`).join('')}</ul></div>
     </div>${act ? `<div class="df">${act}</div>` : ''}`);
 }
@@ -674,6 +680,8 @@ function vPc() {
     ${isAdmin() ? `<div class="card"><h3>${ms('add_card')}เติมเงิน / ยอดยกมา</h3><div class="fgrid"><div class="field"><label for="pc-amt">จำนวนเงิน (บาท)</label><input class="inp num" type="number" id="pc-amt"></div><div class="field"><label for="pc-note">หมายเหตุ</label><input class="inp" id="pc-note" placeholder="เช่น ยอดยกมา / เติมกองทุน"></div></div><button class="btn pri" style="margin-top:10px" data-act="pcTopup">${ms('add')}บันทึกเติมเงิน</button><p class="formula" style="margin:10px 0 0">หน้าเงินสดย่อยเต็ม (นับเงินจริง ใบเบิกชดเชย) เปิดในรอบ 3</p></div>` : ''}</div>`;
 }
 
+const fmtN = (n) => Number(n || 0).toLocaleString('th-TH');
+async function loadGmu() { if (ST.gmuLoading) return; ST.gmuLoading = true; try { ST.gmu = await api('mapsUsage'); } catch (e) { ST.gmu = { ac: 0, details: 0, routes: 0, cap: 9000 }; } ST.gmuLoading = false; if (ST.view === 'settings') render(); }
 // ===== loaders =====
 async function loadMembers() { try { ST.members = (await api('listMembers')).list; } catch (e) { fail(e); ST.members = []; } if (ST.view === 'settings') render(); }
 async function loadHistory() {
@@ -752,8 +760,8 @@ document.addEventListener('click', async (e) => {
     if (a === 'resetDraft') { ST.draft = null; render(); return; }
     if (a === 'saveSettings') return busy(b, async () => {
       const D = ST.draft;
-      await api('saveSettings', { settings: D.settings, cats: D.cats, customers: D.customers.filter((c) => c.name.trim()), home: D.home, defaults: D.defaults, ...(D.orsKey ? { orsKey: D.orsKey.trim() } : {}) });
-      await reloadMe(); ST.draft = null; render(); toast('บันทึกค่าทั่วไปแล้ว');
+      await api('saveSettings', { settings: D.settings, cats: D.cats, customers: D.customers.filter((c) => c.name.trim()), home: D.home, defaults: D.defaults, ...(D.orsKey ? { orsKey: D.orsKey.trim() } : {}), ...(D.gmapsKey ? { gmapsKey: D.gmapsKey.trim() } : {}) });
+      await reloadMe(); ST.draft = null; ST.gmu = null; render(); toast('บันทึกค่าทั่วไปแล้ว');
     });
     if (a === 'bankEdit') { ST.bankEdit = v; render(); $('#bk-no, #bk-co')?.focus(); return; }
     if (a === 'bankCancel') { ST.bankEdit = null; render(); return; }
@@ -790,6 +798,73 @@ document.addEventListener('click', async (e) => {
   } catch (x) { fail(x); }
 });
 
+// ===== ค้นหาสถานที่ (ลูกค้าในระบบ + Google Maps) =====
+const gmLink = (pts) => { if (!pts || pts.length < 2) return ''; const p = (x) => `${x.lat},${x.lng}`; const mid = pts.slice(1, -1).map(p).join('|'); return `https://www.google.com/maps/dir/?api=1&origin=${p(pts[0])}&destination=${p(pts[pts.length - 1])}${mid ? `&waypoints=${encodeURIComponent(mid)}` : ''}&travelmode=driving`; };
+const areaOf = (addr) => { let x = String(addr || '').replace(/[,\s]*(ประเทศไทย|Thailand)\s*$/i, '').trim(); if (x.includes(',')) { const p = x.split(',').map((y) => y.trim()).filter(Boolean); x = (p[p.length - 1] || '').replace(/\s*\d{5}\s*$/, '').trim(); } else { const m = x.match(/([^\s]+)\s*\d{5}\s*$/); if (m) x = m[1]; } return x.replace(/^(จังหวัด|จ\.)\s*/, '').trim(); };
+const TA = { key: null, q: '', local: [], g: [], hi: 0, session: '', loading: false, off: '', t: null, seq: 0, picking: false };
+const newSession = () => (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2));
+function taInput(el, key) {
+  if (TA.key !== key) { TA.key = key; TA.session = newSession(); }
+  TA.q = el.value.trim(); TA.hi = 0; clearTimeout(TA.t);
+  const ql = TA.q.toLowerCase();
+  TA.local = key === 'cust' || !ql ? [] : (ST.settings.customers || []).filter((c) => c.name.toLowerCase().includes(ql)).slice(0, 5);
+  TA.g = []; TA.off = '';
+  if (key !== 'cust' && (ST.settings.customers || []).some((c) => c.name === TA.q)) { taClose(); return; } // ตรงกับลูกค้าในระบบแล้ว ไม่ต้องค้นต่อ
+  TA.loading = !!(ST.settings.hasGmaps && TA.q.length >= 2);
+  taDraw();
+  if (!TA.loading) return;
+  const my = ++TA.seq;
+  TA.t = setTimeout(async () => {
+    try { const r = await api('placeSearch', { q: TA.q, session: TA.session }); if (my !== TA.seq) return; TA.g = r.list || []; TA.off = r.off || ''; }
+    catch (e) { if (my === TA.seq) TA.off = 'error'; }
+    if (my === TA.seq) { TA.loading = false; taDraw(); }
+  }, 300);
+}
+const taBox = () => TA.key === null ? null : document.getElementById(`ta-${TA.key}`);
+const taItems = () => [...TA.local.map((c) => ({ t: 'local', c })), ...TA.g.map((g) => ({ t: 'g', g }))];
+function taDraw() {
+  const box = taBox(); if (!box) return;
+  const items = taItems(); const inp = TA.key === 'cust' ? $('#cust-q') : document.getElementById(`f-stop-${TA.key}`);
+  if (!TA.q || (!items.length && !TA.loading && !TA.off && TA.key !== 'cust' && !ST.settings.hasGmaps)) { box.hidden = true; inp && inp.setAttribute('aria-expanded', 'false'); return; }
+  let k = -1; const row = (ic, a, b, tag, cls) => { k++; return `<div class="ta-i ${k === TA.hi ? 'on' : ''}" role="option" data-ta="${k}">${ms(ic, 'style="color:var(--brand)"')}<span class="ta-t"><b>${esc(a)}</b>${b ? `<small>${esc(b)}</small>` : ''}</span>${tag ? `<span class="pill ${cls}">${tag}</span>` : ''}</div>`; };
+  let h = '';
+  if (TA.local.length) h += `<small class="ta-h">ลูกค้าในระบบ</small>` + TA.local.map((c) => row('storefront', c.name, c.lat != null ? 'มีพิกัดแล้ว' : 'ยังไม่มีพิกัด · กรอกระยะทางเอง', 'ลูกค้า', 'p-closed')).join('');
+  if (ST.settings.hasGmaps) {
+    h += `<small class="ta-h">จาก Google Maps</small>`;
+    if (TA.loading) h += `<div class="ta-i"><span class="spin"></span><span>กำลังค้นหา…</span></div>`;
+    else if (TA.g.length) h += TA.g.map((g) => row('location_on', g.main, g.sub, 'Google', 'p-open')).join('');
+    else h += `<div class="ta-i" style="color:var(--sub)">${TA.off === 'cap' ? 'ใช้ Google ครบโควตาเดือนนี้แล้ว · กรอกระยะทางเอง' : TA.off === 'user' ? 'ค้นหาครบจำนวนต่อวันแล้ว' : TA.off === 'badkey' ? 'คีย์ Google Maps ใช้ไม่ได้ · แจ้ง Admin' : TA.off === 'error' ? 'ค้นหาไม่ได้ตอนนี้' : TA.q.length < 2 ? 'พิมพ์อย่างน้อย 2 ตัวอักษร' : 'ไม่พบสถานที่'}</div>`;
+    h += `<div class="ta-pw">powered by Google</div>`;
+  } else if (!TA.local.length) h += `<div class="ta-i" style="color:var(--sub)">${TA.key === 'cust' ? 'ยังไม่ได้ตั้งคีย์ Google Maps' : 'ไม่อยู่ในรายชื่อลูกค้า · กรอกระยะทางเอง'}</div>`;
+  box.innerHTML = h; box.hidden = false; inp && inp.setAttribute('aria-expanded', 'true');
+}
+function taClose() { const box = taBox(); if (box) box.hidden = true; TA.key = null; TA.q = ''; TA.seq++; }
+async function taPick(k) {
+  const it = taItems()[k]; if (!it) return; const key = TA.key, session = TA.session;
+  TA.picking = true;
+  try {
+    if (it.t === 'local') { const f = ST.form; f.stops[+key] = it.c.name; f.geo[+key] = null; taClose(); render(); refreshRoute(); return; }
+    const box = taBox(); if (box) box.innerHTML = `<div class="ta-i"><span class="spin"></span><span>กำลังดึงพิกัด…</span></div>`;
+    const p = await api('placePick', { placeId: it.g.placeId, session });
+    const area = areaOf(p.address); const name = area && !p.name.includes(area) ? `${p.name} · ${area}` : p.name;
+    taClose();
+    if (key === 'cust') {
+      if (ST.draft.customers.some((c) => c.name === name)) { toast('มีลูกค้าชื่อนี้แล้ว', 'info'); return; }
+      ST.draft.customers.push({ name, lat: Math.round(p.lat * 1e6) / 1e6, lng: Math.round(p.lng * 1e6) / 1e6 }); render(); toast(`เพิ่ม ${name} แล้ว · กดบันทึกค่าทั่วไป`); return;
+    }
+    const f = ST.form; f.stops[+key] = name; f.geo[+key] = { lat: p.lat, lng: p.lng }; render(); refreshRoute();
+  } catch (e) { fail(e); } finally { TA.picking = false; }
+}
+document.addEventListener('mousedown', (e) => { const it = e.target.closest('.ta-i[data-ta]'); if (it) { e.preventDefault(); taPick(+it.dataset.ta); } });
+document.addEventListener('focusout', (e) => { if (e.target.matches('[data-stop], #cust-q')) setTimeout(() => { if (!TA.picking && document.activeElement !== e.target) taClose(); }, 120); });
+document.addEventListener('keydown', (e) => {
+  if (TA.key === null || !e.target.matches('[data-stop], #cust-q')) return; const n = taItems().length;
+  if (e.key === 'ArrowDown' && n) { e.preventDefault(); TA.hi = (TA.hi + 1) % n; taDraw(); }
+  else if (e.key === 'ArrowUp' && n) { e.preventDefault(); TA.hi = (TA.hi - 1 + n) % n; taDraw(); }
+  else if (e.key === 'Enter' && n && !taBox().hidden) { e.preventDefault(); taPick(TA.hi); }
+  else if (e.key === 'Escape' || e.key === 'Tab') taClose();
+});
+
 // ===== events: รอบ 2 =====
 async function reloadTrv() { ST.trv = await api('trvList'); ST.payq = null; ST.pc = null; }
 const fileOf = async (inp) => inp && inp.files && inp.files[0] ? readFile(inp.files[0]) : null;
@@ -803,8 +878,8 @@ async function trvClick(a, v, b) {
   // ฟอร์มขอเบิก
   const f = ST.form;
   if (a === 'travDel') { f.travelerIds = f.travelerIds.filter((x) => x !== v); render(); return true; }
-  if (a === 'stopAdd') { f.stops.push(''); render(); document.getElementById(`f-stop-${f.stops.length - 1}`)?.focus(); return true; }
-  if (a === 'stopDel') { f.stops.splice(+v, 1); f.legs = null; render(); refreshRoute(); return true; }
+  if (a === 'stopAdd') { f.stops.push(''); f.geo.push(null); render(); document.getElementById(`f-stop-${f.stops.length - 1}`)?.focus(); return true; }
+  if (a === 'stopDel') { f.stops.splice(+v, 1); f.geo.splice(+v, 1); f.legs = null; render(); refreshRoute(); return true; }
   if (a === 'exAdd') { f.extras.push({ cat: ST.settings.cats[0] || 'อื่นๆ', desc: '', amount: '' }); render(); return true; }
   if (a === 'exDel') { f.extras.splice(+v, 1); render(); return true; }
   if (a === 'submitReq') {
@@ -814,7 +889,7 @@ async function trvClick(a, v, b) {
     if (!(k.km > 0)) { toast('ใส่ระยะทางไป-กลับ', 'error'); return true; }
     if (f.kmManual && f.kmCalc != null && f.kmSrc !== 'est' && Math.abs(k.km - f.kmCalc) >= 0.5 && !f.kmReason.trim()) { toast('ใส่เหตุผลที่แก้ระยะทาง', 'error'); return true; }
     await busy(b, async () => {
-      const form = { editNo: f.editNo, staffId: f.staffId, travelerIds: f.travelerIds, title: f.title, go: f.go, back: f.back, stops: f.stops.map((x) => x.trim()).filter(Boolean), km: k.km, kmReason: f.kmManual || f.kmCalc == null ? f.kmReason : '', rooms: f.rooms, hotelOver: f.hotelOver, hotelRate: f.hotelRate, hotelReason: f.hotelReason, extras: f.extras, price: f.price };
+      const form = { editNo: f.editNo, staffId: f.staffId, travelerIds: f.travelerIds, title: f.title, go: f.go, back: f.back, stops: f.stops.map((x) => x.trim()).filter(Boolean), geo: f.stops.map((x, i) => (x.trim() ? f.geo[i] || null : undefined)).filter((g) => g !== undefined), km: k.km, kmReason: f.kmManual || f.kmCalc == null ? f.kmReason : '', rooms: f.rooms, hotelOver: f.hotelOver, hotelRate: f.hotelRate, hotelReason: f.hotelReason, extras: f.extras, price: f.price };
       const r = await api('trvSubmit', { form }); ST.form = null; await reloadTrv();
       ST.view = isAdmin() ? 'inbox' : 'home'; render(); toast(form.editNo ? `บันทึก ${r.no} แล้ว` : `ส่งคำขอ ${r.no} แล้ว · รอ admin อนุมัติ`); if (isAdmin()) drawDoc(r.no);
     });
@@ -884,7 +959,7 @@ document.addEventListener('change', async (e) => {
     if (el.id === 'f-addtrav' && el.value) { ST.form.travelerIds.push(el.value); render(); return; }
     if (el.id === 'f-staff') { ST.form.staffId = el.value; ST.form.travelerIds = ST.form.travelerIds.filter((x) => x !== el.value); render(); return; }
     if (el.dataset.fchk) { ST.form[el.dataset.fchk] = el.checked; if (el.dataset.fchk === 'kmManual') ST.form.kmAuto = false; if (el.dataset.fchk === 'kmManual' && el.checked && !ST.form.km) ST.form.km = ST.form.kmCalc; render(); return; }
-    if (el.dataset.stop !== undefined) { refreshRoute(); return; }
+    if (el.dataset.stop !== undefined) { if (!TA.picking) refreshRoute(); return; }
     if (el.id === 'f-go' || el.id === 'f-back') { (updReq(['#hotelField']), updCalc()); return; }
     if (el.dataset.ex) { updCalc(); return; }
     if (el.id === 'cf') { ST.claimF = el.value; render(); return; }
@@ -900,7 +975,8 @@ document.addEventListener('change', async (e) => {
 document.addEventListener('input', (e) => {
   const el = e.target;
   if (ST.form && el.dataset.f) { const k = el.dataset.f; ST.form[k] = el.value; if (k === 'km') ST.form.kmAuto = false; if (['km', 'rooms', 'hotelRate'].includes(k)) updCalc(); return; }
-  if (ST.form && el.dataset.stop !== undefined) { ST.form.stops[+el.dataset.stop] = el.value; return; }
+  if (ST.form && el.dataset.stop !== undefined) { const i = +el.dataset.stop; ST.form.stops[i] = el.value; ST.form.geo[i] = null; el.parentElement.querySelector('.ta-ok')?.remove(); taInput(el, String(i)); return; }
+  if (el.id === 'cust-q') { taInput(el, 'cust'); return; }
   if (ST.form && el.dataset.ex) { const [i, key] = el.dataset.ex.split(':'); ST.form.extras[+i][key] = el.value; if (key === 'amount') updCalc(); return; }
   if (el.id === 'cq') { ST.claimQ = el.value; const pos = el.selectionStart; render(); const n = $('#cq'); n.focus(); n.setSelectionRange(pos, pos); return; }
   const k = ST.clr; if (!k) return;
@@ -955,6 +1031,7 @@ document.addEventListener('input', (e) => {
   else if (el.dataset.home) ST.draft.home[el.dataset.home] = el.dataset.home === 'name' ? el.value : (el.value === '' ? null : Number(el.value));
   else if (el.dataset.def) ST.draft.defaults[el.dataset.def] = el.value;
   else if (el.dataset.ors) ST.draft.orsKey = el.value;
+  else if (el.dataset.gm) ST.draft.gmapsKey = el.value;
 });
 document.addEventListener('change', (e) => { const el = e.target; if (el.dataset.def && ST.draft) ST.draft.defaults[el.dataset.def] = el.value; });
 document.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.id === 'cat-new') { e.preventDefault(); $('[data-act="catAdd"]').click(); } });
