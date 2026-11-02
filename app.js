@@ -164,9 +164,25 @@ function showSetup() {
     <button class="btn ghost block" data-act="logout">ออกจากระบบ</button>`);
 }
 
+// ===== หน้าโหลด (splash) · แสดงอย่างน้อย SPLASH_MIN_MS แล้วค่อยจางหาย =====
+const SPLASH_MIN_MS = 1800;
+let splashGone = false;
+const splashMsg = (t) => { const m = $('#spMsg'); if (m) m.textContent = t; };
+async function splashOff() {
+  if (splashGone) return; splashGone = true;
+  const el = $('#splash'); if (!el) return;
+  const wait = SPLASH_MIN_MS - performance.now(); // นับจากเริ่มเปิดหน้า
+  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+  el.classList.add('out'); setTimeout(() => el.remove(), 500);
+}
+
 async function boot() {
+  try { await bootInner(); } finally { splashOff(); }
+}
+async function bootInner() {
   if (!getToken()) { showLogin(); return; }
-  authEl().hidden = false; authEl().innerHTML = `<div class="loading"><div class="spin"></div><span>กำลังโหลด…</span></div>`;
+  if (splashGone) { authEl().hidden = false; authEl().innerHTML = `<div class="loading"><div class="spin"></div><span>กำลังโหลด…</span></div>`; }
+  else splashMsg('กำลังโหลดข้อมูลของคุณ…');
   let r;
   try { r = await api('me'); } catch (e) { if (!e.silent) showLogin(errMsg(e)); return; }
   ST.me = r.me; ST.settings = r.settings; ST.trialMode = r.trialMode; ST.custodianName = r.custodianName; ST.canSetup = r.canSetup;

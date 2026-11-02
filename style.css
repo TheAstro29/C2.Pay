@@ -509,3 +509,23 @@ td.in { color: var(--good); } td.out { color: var(--ink); }
   #printv .a4 { box-shadow: none !important; margin: 0 !important; box-sizing: border-box; width: 210mm; min-height: 296mm; page-break-after: always; break-after: page; }
   #printv .a4:last-child { page-break-after: auto; break-after: auto; }
 }
+
+/* ===== หน้าโหลด (splash) ===== */
+.splash { position: fixed; inset: 0; z-index: 300; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px 16px calc(28px + env(safe-area-inset-bottom)); background: radial-gradient(120% 90% at 50% 30%, #4A7259 0%, #3F654D 38%, #1F3428 100%); color: #fff; overflow: hidden; transition: opacity .45s ease, visibility .45s; }
+.splash.out { opacity: 0; visibility: hidden; }
+.splash .sp-glow { position: absolute; width: 520px; height: 520px; border-radius: 50%; top: 50%; left: 50%; transform: translate(-50%, -62%); background: radial-gradient(circle, rgba(210,220,216,.18), transparent 62%); animation: spGlow 3.2s ease-in-out infinite; }
+.splash .sp-mid { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; position: relative; text-align: center; }
+.splash .sp-icon { width: 112px; height: 112px; border-radius: 26px; box-shadow: 0 18px 40px rgba(0,0,0,.28), 0 0 0 1px rgba(255,255,255,.12); animation: spIn .7s cubic-bezier(.2,.9,.3,1.2) both, spFloat 2.6s ease-in-out .8s infinite; }
+.splash .sp-name { font-family: 'Chakra Petch', 'Anuphan', sans-serif; font-weight: 700; font-size: 30px; letter-spacing: .02em; margin-top: 10px; animation: spUp .6s ease .25s both; }
+.splash .sp-sub { font-size: 13.5px; color: #D2DCD8; animation: spUp .6s ease .35s both; }
+.splash .sp-bar { width: 180px; height: 4px; border-radius: 4px; background: rgba(255,255,255,.16); overflow: hidden; margin-top: 22px; animation: spUp .6s ease .45s both; }
+.splash .sp-bar i { display: block; height: 100%; width: 40%; border-radius: 4px; background: #D2DCD8; animation: spRun 1.15s ease-in-out infinite; }
+.splash .sp-msg { font-size: 12.5px; color: rgba(255,255,255,.72); min-height: 1.4em; animation: spUp .6s ease .5s both; }
+.splash .sp-foot { height: 18px; width: auto; opacity: .7; position: relative; }
+@keyframes spIn { from { opacity: 0; transform: translateY(14px) scale(.82); } to { opacity: 1; transform: none; } }
+@keyframes spUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes spFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+@keyframes spRun { 0% { transform: translateX(-110%); } 100% { transform: translateX(260%); } }
+@keyframes spGlow { 0%, 100% { opacity: .7; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .splash *, .splash { animation: none !important; transition: none !important; } .splash .sp-bar i { width: 100%; opacity: .6; } }
+@media print { .splash { display: none !important; } }
