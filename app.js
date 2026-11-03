@@ -223,7 +223,7 @@ function render() {
   if (!ST.me) return;
   renderNav();
   $('#ttl').textContent = TITLES[ST.view] || '';
-  $('#acts').innerHTML = `<button class="btn sm ghost" data-act="refresh" title="โหลดข้อมูลใหม่">${ms('refresh')}<span class="pc-only">โหลดใหม่</span></button>`;
+  $('#acts').innerHTML = `${IN_FRAME ? `<button class="btn sm ghost" data-act="openTab" title="เปิด C2-Pay ในแท็บใหม่ (พิมพ์และดาวน์โหลดไฟล์ได้เต็มที่)">${ms('open_in_new')}<span class="pc-only">เปิดในแท็บใหม่</span></button>` : ''}<button class="btn sm ghost" data-act="refresh" title="โหลดข้อมูลใหม่">${ms('refresh')}<span class="pc-only">โหลดใหม่</span></button>`;
   if (!isAdmin() && !isCeo()) $('#ttl').textContent = ST.view === 'home' ? 'ทริปของฉัน' : $('#ttl').textContent;
   const V = { settings: vSettings, profile: vProfile, claims: vClaims, inbox: vInbox, clear: vClearList, payq: vPayq, pc: vPc, req: vReq, clr: vClr, more: vMore, new: vNew, ledger: vLedger, adv: vAdv, report: vReport };
   const v = (V[ST.view] || (isAdmin() || isCeo() ? vDash : vMyTrips))();
@@ -648,9 +648,9 @@ function drawDoc(no) {
       ${d.returnNote && d.status === 'returned' ? `<div class="banner warn">${ms('edit_note')}<span>ส่งกลับให้แก้: <b>${esc(d.returnNote)}</b></span></div>` : ''}
       ${d.rejectNote && d.status === 'rejected' ? `<div class="banner bad">${ms('block')}<span>${d.cancelled ? 'ยกเลิก' : 'ไม่อนุมัติ'}: <b>${esc(d.rejectNote)}</b></span></div>` : ''}
       ${d.clearReturn && d.status === 'open' ? `<div class="banner warn">${ms('edit_note')}<span>ส่งเคลียร์กลับให้แก้: <b>${esc(d.clearReturn)}</b></span></div>` : ''}
-      <div class="card"><b style="font-size:16px">${esc(d.title)}</b><dl class="kv" style="margin-top:8px"><dt>ผู้รับเงิน</dt><dd>${esc(d.staffName)}</dd><dt>ผู้เดินทาง</dt><dd>${d.travelers.map((t) => esc(t.name)).join(', ')}</dd><dt>วันที่</dt><dd>${dRange(d.go, d.back)} (${p.days} วัน ${p.nights} คืน)</dd><dt>เส้นทาง</dt><dd>${esc(ST.settings.home.name.split(' · ')[0])} → ${d.stops.map(esc).join(' → ')} → กลับ</dd><dt>จ่ายโดย</dt><dd>${d.paidFrom === 'PC' ? 'เงินสดย่อย' : d.paidFrom === 'BANK' ? 'โอนเข้าบัญชี' : '—'}</dd></dl>${pay}</div>
+      <div class="card"><b style="font-size:16px">${esc(d.title)}</b><dl class="kv" style="margin-top:8px"><dt>ผู้รับเงิน</dt><dd>${esc(d.staffName)}</dd><dt>ผู้เดินทาง</dt><dd>${d.travelers.map((t) => esc(t.name)).join(', ')}</dd><dt>วันที่</dt><dd>${dRange(d.go, d.back)} (${p.days} วัน ${p.nights} คืน)</dd><dt>สถานที่</dt><dd>${d.stops.length} แห่ง · ${fmt(p.km)} กม. ไป-กลับ</dd><dt>จ่ายโดย</dt><dd>${d.paidFrom === 'PC' ? 'เงินสดย่อย' : d.paidFrom === 'BANK' ? 'โอนเข้าบัญชี' : '—'}</dd></dl>${pay}</div>
       ${extCards(d)}${voucherBtn(d)}
-      ${km}${mapBtn ? `<div>${mapBtn}${d.kmSrc ? ` <span class="formula">ระยะจาก ${d.kmSrc === 'google' ? 'Google Maps' : d.kmSrc === 'osrm' ? 'OSRM' : d.kmSrc === 'ors' ? 'OpenRouteService' : 'ค่าประมาณ'}</span>` : ''}</div>` : ''}<div class="card"><h3>${ms('calculate')}ยอดที่ขอเบิก</h3>${lines}</div>${actual}
+      ${routeCard(d, mapBtn)}${km}<div class="card"><h3>${ms('calculate')}ยอดที่ขอเบิก</h3>${lines}</div>${actual}
       <div class="card"><h3>${ms('history')}ความเคลื่อนไหว</h3><ul class="tl">${d.timeline.map((t) => `<li>${esc(t.text)}${t.amt != null ? ` · <b class="num">${fmt(t.amt)}</b>` : ''}<small>${dtTime(t.at)} · ${esc(t.byName)}</small></li>`).join('')}</ul></div>
     </div>${act ? `<div class="df">${act}</div>` : ''}`);
 }
@@ -791,25 +791,29 @@ function drawBatch(no) {
 // ----- พิมพ์ A4 -----
 const thDate = (s) => { if (!s) return ''; const [y, m, d] = s.split('-').map(Number); return `${d} ${MON[m - 1]} ${y + 543}`; };
 function a4Head(title, sub, right) { return `<div class="ph"><img src="img/logo.png" alt="C2TECH"><div class="co"><b>${title}</b><br>${sub}</div><div class="docno">${right}</div></div>`; }
-function detailOf(x, d, pcr) {
-  const head = (amt) => `<h4>${esc(kindLabel(x))}${x.ref ? ` · ${esc(x.ref)}` : ''}<span>${fmt(amt)} บาท</span></h4>`;
+function detailOf(x, d, pcr, idx) {
+  const n = idx != null ? `${idx + 1}. ` : '';
+  const head = () => `<h4>${n}${esc(kindLabel(x))}${x.ref ? ` · ${esc(x.ref)}` : ''}</h4>`;
   const row = (k, v, amt, why) => `<div class="xrow"><span>${k ? `<span class="k">${k} :</span> ` : ''}${v}${why ? `<span class="why">${why}</span>` : ''}</span><b>${fmt(amt)}</b></div>`;
-  if (x.kind === 'pcr') return `<div class="item">${head(x.amount)}<div class="xnote">ใช้ไปตั้งแต่เติมครั้งก่อน · โอนเข้า${esc(x.bank ? `${x.bank.bank} ${x.bank.no}` : '')} (บัญชีเงินสำรองจ่าย)</div>${(pcr || []).map((e) => row('', `${thDate(e.date)} · ${esc(e.note)}${e.ref ? ` <span class="cat">${esc(e.ref)}</span>` : ''}`, e.kind === 'in' ? -e.amount : e.amount)).join('')}</div>`;
-  if (!d) return `<div class="item">${head(x.amount)}<div class="xnote">${esc(x.title)}</div></div>`;
+  const kv = (pairs) => `<div class="kv2">${pairs.filter(Boolean).map(([k, v]) => `<span class="k">${k} :</span><span>${v}</span>`).join('')}</div>`;
+  const sum = (amt) => `<div class="sumrow"><span><b class="sl">รวมเป็นเงิน</b><span class="w">(${bahtText(amt)})</span></span><b class="sv">${fmt(amt)} บาท</b></div>`;
+  const place = (v) => { const p = String(v).split(' · '); return p.length > 1 ? `${esc(p.slice(0, -1).join(' · '))} <small>· ${esc(p[p.length - 1])}</small>` : esc(v); };
+  const route = (stops) => `<span class="route"><span><i class="h">⌂</i>${esc(ST.settings.home.name.split(' · ')[0])} (ออกเดินทาง)</span>${stops.map((v, i) => `<span><i>${i + 1}</i>${place(v)}</span>`).join('')}<span><i class="h">↩</i>กลับ ${esc(ST.settings.home.name.split(' · ')[0])}</span></span>`;
+  const people = (dd) => `${dd.travelers.length} คน · ${dd.travelers.map((t, i) => `${i + 1}) ${esc(t.name)}${t.id === dd.staffId ? ' (ผู้รับเงิน)' : ''}`).join(' ')}`;
+  if (x.kind === 'pcr') return `<div class="item">${head()}<div class="xnote">ใช้ไปตั้งแต่เติมครั้งก่อน · โอนเข้า${esc(x.bank ? `${x.bank.bank} ${x.bank.no}` : '')} (บัญชีเงินสำรองจ่าย)</div>${(pcr || []).map((e) => row('', `${thDate(e.date)} · ${esc(e.note)}${e.ref ? ` <span class="cat">${esc(e.ref)}</span>` : ''}`, e.kind === 'in' ? -e.amount : e.amount)).join('')}${sum(x.amount)}</div>`;
+  if (!d) return `<div class="item">${head()}<div class="xnote">${esc(x.title)}</div>${sum(x.amount)}</div>`;
   const pay = `<div class="xnote">โอนให้: ${esc(x.payee)}${x.external ? ' · ตามใบแจ้งหนี้' : x.bank ? ` · ${esc(x.bank.bank)} ${esc(x.bank.no)}` : ''}</div>`;
   if (x.kind === 'ext') { const e = (d.ext || [])[d.ext.length - 1] || {}, df = e.diff || {};
-    return `<div class="item">${head(x.amount)}${pay}<div class="jobh"><span><span class="k">ชื่องาน :</span> <b>${esc(d.title)}</b></span><span><span class="k">ทริปใหม่</span> <b>${thDate(d.go)} – ${thDate(d.back)}</b></span></div>
-      <div class="xnote">ต่อทริป: ${df.newBack !== df.oldBack ? `เดิมกลับ ${thDate(df.oldBack)} → กลับใหม่ ${thDate(df.newBack)}` : 'วันเดิม'}${(df.added || []).length ? ` · เพิ่มสถานที่ ${df.added.map(esc).join(', ')}` : ''}${(df.addPeople || []).length ? ` · คนเพิ่ม ${df.addPeople.map(esc).join(', ')}` : ''}${e.note ? ` · เหตุผล: ${esc(e.note)}` : ''}</div>
-      ${df.fuel ? row('ค่าน้ำมันเพิ่ม', `${fmt(df.km)} กม.`, df.fuel) : ''}${df.allowance ? row('ค่าเบี้ยเลี้ยงเพิ่ม', '', df.allowance) : ''}${df.hotel ? row('ค่าที่พักเพิ่ม', '', df.hotel) : ''}${(df.extras || []).map((z) => row(esc(z.cat), esc(z.desc), z.amount)).join('')}</div>`; }
-  if (x.kind === 'topup') return `<div class="item">${head(x.amount)}${pay}<div class="jobh"><span><span class="k">งาน :</span> <b>${esc(d.title)}</b></span></div>${row('', 'ใช้จริงตามใบเสร็จ', d.actual ? d.actual.total : 0)}${row('', 'หัก เงินที่จ่ายไปแล้ว', -d.requested)}${row('', '<b>จ่ายเพิ่ม (ส่วนต่าง)</b>', x.amount)}</div>`;
+    return `<div class="item">${head()}${pay}${kv([['ชื่องาน', `<b>${esc(d.title)}</b>`], ['วันที่ (ทริปใหม่)', `${thDate(d.go)}${d.back !== d.go ? ' – ' + thDate(d.back) : ''}${df.newBack !== df.oldBack ? ` <small>(เดิมกลับ ${thDate(df.oldBack)})</small>` : ''}`], ['เส้นทางการเดินทาง', route(d.stops)], ['ชื่อผู้เดินทาง', people(d)], (df.added || []).length ? ['สถานที่ที่เพิ่ม', df.added.map(esc).join(', ')] : null, e.note ? ['เหตุผลที่ต่อทริป', esc(e.note)] : null])}
+      ${df.fuel ? row('ค่าน้ำมันเพิ่ม', `${fmt(df.km)} กม.`, df.fuel) : ''}${df.allowance ? row('ค่าเบี้ยเลี้ยงเพิ่ม', '', df.allowance) : ''}${df.hotel ? row('ค่าที่พักเพิ่ม', '', df.hotel) : ''}${(df.extras || []).map((z) => row(esc(z.cat), esc(z.desc), z.amount)).join('')}${sum(x.amount)}</div>`; }
+  if (x.kind === 'topup') return `<div class="item">${head()}${pay}${kv([['ชื่องาน', `<b>${esc(d.title)}</b>`], d.type === 'TRV' ? ['วันที่', `${thDate(d.go)}${d.back !== d.go ? ' – ' + thDate(d.back) : ''}`] : null])}${row('', 'ใช้จริงตามใบเสร็จ', d.actual ? d.actual.total : 0)}${row('', 'หัก เงินที่จ่ายไปแล้ว', -d.requested)}${sum(x.amount)}</div>`;
   if (d.type === 'TRV') { const p = d.plan, s = set();
-    return `<div class="item">${head(x.amount)}${pay}<div class="jobh"><span><span class="k">ชื่องาน :</span> <b>${esc(d.title)}</b></span><span><span class="k">วันที่</span> <b>${thDate(d.go)}${d.back !== d.go ? ' – ' + thDate(d.back) : ''}</b> (${p.days} วัน ${p.nights} คืน)</span></div>
-      <div class="xnote">เส้นทาง: ${esc(ST.settings.home.name.split(' · ')[0])} → ${d.stops.map(esc).join(' → ')} → กลับ · ${p.people} คน (${d.travelers.map((t) => esc(t.name)).join(', ')})${d.kmReason ? ` · แก้ระยะทาง: ${esc(d.kmReason)}` : ''}</div>
+    return `<div class="item">${head()}${pay}${kv([['ชื่องาน', `<b>${esc(d.title)}</b>`], ['วันที่', `${thDate(d.go)}${d.back !== d.go ? ' – ' + thDate(d.back) : ''} (${p.days} วัน ${p.nights} คืน)`], ['เส้นทางการเดินทาง', route(d.stops)], ['ชื่อผู้เดินทาง', people(d)], d.kmReason ? ['หมายเหตุระยะทาง', esc(d.kmReason)] : null])}
       ${row('ค่าน้ำมัน', `${fmt(p.km)} กม. ÷ ${s.kmPerL} × ${p.price}`, p.fuel)}${row('ค่าเบี้ยเลี้ยง', `${p.people} คน × ${p.days} วัน × ${fmt(s.allowance)}`, p.allowance)}
       ${p.nights ? row('ค่าที่พัก', `${p.nights} คืน × ${p.rooms} ห้อง × ${fmt(p.rate)}${p.hotelOver ? ` <span class="cat">(เกินอัตรา ${fmt(s.hotel)})</span>` : ''}`, p.hotel, p.hotelOver && p.hotelReason ? `เหตุผล: ${esc(p.hotelReason)}` : '') : ''}
-      ${(p.extras || []).map((e) => row(esc(e.cat), esc(e.desc), e.amount)).join('')}</div>`; }
-  if (d.type === 'ADV') return `<div class="item">${head(x.amount)}${pay}<div class="jobh"><span><span class="k">เรื่อง :</span> <b>${esc(d.title)}</b></span>${d.customer ? `<span><span class="k">ลูกค้า :</span> ${esc(d.customer)}</span>` : ''}</div>${d.items.map((i) => row('', esc(i.desc), i.amount)).join('')}<div class="xnote" style="margin:6px 0 0">หลังใช้จริง ทีมงานต้องเคลียร์ด้วยใบเสร็จภายใน ${set().clearDue} วัน</div></div>`;
-  return `<div class="item">${head(x.amount)}${pay}${row(esc(d.cat || ''), `${esc(d.title)} · วันที่ ${thDate(d.go)}`, d.requested)}<div class="xnote" style="margin:6px 0 0">${d.file ? 'แนบใบเสร็จ/ใบแจ้งหนี้ในระบบแล้ว' : 'ไม่มีไฟล์แนบในระบบ'}</div></div>`;
+      ${(p.extras || []).map((e) => row(esc(e.cat), esc(e.desc), e.amount)).join('')}${sum(x.amount)}</div>`; }
+  if (d.type === 'ADV') return `<div class="item">${head()}${pay}${kv([['เรื่อง', `<b>${esc(d.title)}</b>`], d.customer ? ['ลูกค้า', esc(d.customer)] : null, ['วันที่', thDate(d.go)]])}${d.items.map((i) => row('', esc(i.desc), i.amount)).join('')}${sum(x.amount)}<div class="xnote" style="margin:6px 0 0">หลังใช้จริง ทีมงานต้องเคลียร์ด้วยใบเสร็จภายใน ${set().clearDue} วัน</div></div>`;
+  return `<div class="item">${head()}${pay}${kv([['รายการ', `<b>${esc(d.title)}</b>`], d.cat ? ['หมวด', esc(d.cat)] : null, ['วันที่', thDate(d.go)], ['หลักฐาน', d.file ? 'แนบใบเสร็จ/ใบแจ้งหนี้ในระบบแล้ว' : 'ไม่มีไฟล์แนบในระบบ']])}${row('', esc(d.title), d.requested)}${sum(x.amount)}</div>`;
 }
 async function apvPrint(no) {
   const r = await api('apvGet', { no }); const b = r.batch;
@@ -823,7 +827,7 @@ async function apvPrint(no) {
     <div style="font-size:12.5px;margin-top:14px">หมายเหตุ CEO: ...........................................................................................................................</div>
     <div class="signs"><div class="sign"><b>ผู้จัดทำ</b><div class="ln">( ${esc(b.createdByName)} )</div><small>วันที่ ......../......../........</small></div><div class="sign"><b>CEO อนุมัติ</b><div class="ln">( .............................................. )</div><small>วันที่ ......../......../........</small></div></div>
     <div class="pfoot"><span>C2-Pay · ${b.no}</span><span>หน้า 1</span></div></div>`;
-  const p2 = `<div class="a4">${a4Head('รายละเอียดประกอบใบเสนอ', `${b.no} · ${b.items.length} รายการ · รวม ${fmt(b.total)} บาท`, '<b>รายละเอียด</b>')}${b.items.map((x) => detailOf(x, r.docs[x.ref], r.pcr)).join('')}<div class="pfoot"><span>C2-Pay · ${b.no}</span><span>หน้า 2</span></div></div>`;
+  const p2 = `<div class="a4">${a4Head('รายละเอียดประกอบใบเสนอ', `${b.no} · ${b.items.length} รายการ · รวม ${fmt(b.total)} บาท`, '<b>รายละเอียด</b>')}${b.items.map((x, i) => detailOf(x, r.docs[x.ref], r.pcr, i)).join('')}<div class="pfoot"><span>C2-Pay · ${b.no}</span><span>หน้า 2</span></div></div>`;
   let pv = $('#printv'); if (!pv) { pv = document.createElement('div'); pv.id = 'printv'; pv.className = 'printv'; document.body.appendChild(pv); }
   pv.innerHTML = `<div class="pbar"><b>${b.no}</b><small>ใบเสนอ CEO · A4 2 หน้า</small><span style="margin-left:auto;display:flex;gap:8px"><button class="btn pri sm" data-act="doPrint">${ms('print')}พิมพ์ / บันทึก PDF</button><button class="btn sm" data-act="closePrint">${ms('close')}ปิด</button></span></div><div class="pages">${p1}${p2}</div>`;
   pv.classList.add('on');
@@ -915,6 +919,19 @@ async function nfSave(b) {
 }
 
 // ---------- รายละเอียดใบที่ไม่ใช่ TRV ----------
+/** เส้นทางแบบไทม์ไลน์: จุดเริ่ม → สถานที่ (ชื่อ + จังหวัด) → กลับ · ระยะแต่ละช่วงถ้ามี */
+function routeCard(d, mapBtn) {
+  const home = esc(ST.settings.home.name.split(' · ')[0]);
+  const legs = Array.isArray(d.kmLegs) && d.kmLegs.length === d.stops.length + 1 ? d.kmLegs : null;
+  const nm = (x) => { const p = String(x).split(' · '); return p.length > 1 ? { n: p.slice(0, -1).join(' · '), a: p[p.length - 1] } : { n: String(x), a: '' }; };
+  const leg = (i) => legs ? `<span class="rt-leg">${fmt(legs[i])} กม.</span>` : '';
+  const src = d.kmSrc === 'google' ? 'Google Maps' : d.kmSrc === 'osrm' ? 'OSRM' : d.kmSrc === 'ors' ? 'OpenRouteService' : d.kmSrc === 'est' ? 'ค่าประมาณ' : 'กรอกเอง';
+  return `<div class="card"><h3>${ms('route')}เส้นทาง<span class="r">${d.stops.length} แห่ง · ${fmt(d.plan.km)} กม.</span></h3><ol class="rtl">
+    <li class="rt-home">${ms('home', 'class="rt-dot"')}<div><b>${home}</b><small>ออกเดินทาง · ${dt(d.go)}</small></div></li>
+    ${d.stops.map((x, i) => { const v = nm(x); return `<li>${leg(i)}<span class="rt-dot rt-n">${i + 1}</span><div><b>${esc(v.n)}</b>${v.a ? `<small>${ms('location_on', 'style="font-size:13px;vertical-align:-2px"')}${esc(v.a)}</small>` : ''}</div></li>`; }).join('')}
+    <li class="rt-home">${leg(d.stops.length)}${ms('keyboard_return', 'class="rt-dot"')}<div><b>กลับ ${home}</b><small>${dt(d.back)}</small></div></li></ol>
+    <div class="rt-foot"><span class="formula">ระยะจาก ${src}${d.kmReason ? ` · แก้เอง: ${esc(d.kmReason)}` : ''}</span>${mapBtn || ''}</div></div>`;
+}
 /** การ์ดต่อทริปในรายละเอียดใบ */
 function extCards(d) {
   const dl = (x) => { const p = []; if (x.added && x.added.length) p.push(`เพิ่มสถานที่: ${x.added.map(esc).join(', ')}`); if (x.newBack !== x.oldBack) p.push(`กลับ ${dt(x.oldBack)} → ${dt(x.newBack)}`); if (x.addPeople && x.addPeople.length) p.push(`เพิ่มคน: ${x.addPeople.map(esc).join(', ')}`); if (x.km) p.push(`${x.km > 0 ? '+' : ''}${fmt(x.km)} กม.`); (x.extras || []).forEach((e) => p.push(`${esc(e.desc)} ${fmt(e.amount)}`)); return p.join(' · '); };
@@ -1013,16 +1030,13 @@ function vLedger() {
     <div class="clist">${list.map((e) => `<div class="ccard" ${e.ref && doc(e.ref) ? `role="button" data-act="openDoc" data-v="${esc(e.ref)}"` : ''}><div class="row"><b style="font-weight:600;min-width:0">${esc(e.desc)}</b><span class="sp amt">${fmt(e.amount)}</span></div><div class="row"><small>${dt(e.date)} · ${esc(e.cat)} · ${SRC_LABEL[e.src] || ''}</small>${e.ref ? `<span class="sp">${tpill(e.ref.slice(0, 3))}</span>` : ''}</div></div>`).join('') || '<div class="card empty">ไม่มีรายการในตัวกรองนี้</div>'}<div class="ccard" style="background:var(--soft)"><div class="row"><b>รวม ${list.length} รายการ</b><span class="sp amt">${fmt(tot)}</span></div></div></div>
     <p class="formula" style="margin-top:10px">ลงสมุดอัตโนมัติเมื่อปิดใบ (TRV / ADV หลังเคลียร์) · เมื่อจ่ายเบิกคืน (RMB) · เมื่อจ่ายค่าใช้จ่ายบริษัท (EXP)</p>`;
 }
+async function loadExcelJS() { if (!window.ExcelJS) await loadScript('https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js'); return window.ExcelJS; }
+async function saveWb(wb, name) { const buf = await wb.xlsx.writeBuffer(); saveBlob(name, new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })); }
 async function ledgerXlsx() {
-  if (!window.XLSX) await loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
-  const list = ledgerRows(), F = ST.lf;
-  const rows = list.map((e) => ({ วันที่: e.date, เลขที่: e.no, หมวด: e.cat, รายการ: e.desc, อ้างอิงใบ: e.ref || '', ที่มาเงิน: SRC_LABEL[e.src] || '', ยอด: e.amount }));
-  rows.push({ วันที่: '', เลขที่: '', หมวด: '', รายการ: `รวม ${list.length} รายการ`, อ้างอิงใบ: '', ที่มาเงิน: '', ยอด: list.reduce((t, e) => t + e.amount, 0) });
-  const by = {}; list.forEach((e) => { by[e.cat] = (by[e.cat] || 0) + e.amount; });
-  const wb = XLSX.utils.book_new(); const ws = XLSX.utils.json_to_sheet(rows); ws['!cols'] = [{ wch: 11 }, { wch: 13 }, { wch: 18 }, { wch: 40 }, { wch: 14 }, { wch: 12 }, { wch: 12 }];
-  XLSX.utils.book_append_sheet(wb, ws, 'สมุดค่าใช้จ่าย');
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(Object.entries(by).sort((a, b) => b[1] - a[1]).map(([k, v]) => ({ หมวด: k, ยอด: v }))), 'สรุปตามหมวด');
-  saveBlob(`C2-Pay-สมุดค่าใช้จ่าย-${F.mon === 'all' ? 'ทั้งหมด' : F.mon}.xlsx`, new Blob([XLSX.write(wb, { type: 'array', bookType: 'xlsx' })], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+  const EX = await loadExcelJS(), F = ST.lf, rows = ledgerRows();
+  const period = F.mon === 'all' ? 'ทุกเดือน' : monTH(F.mon);
+  const filters = `${F.mon === 'all' ? 'ทุกเดือน' : `เดือน ${monTH(F.mon)}`} · ${F.cat === 'all' ? 'ทุกหมวด' : `หมวด ${F.cat}`} · ${F.src === 'all' ? 'ทุกที่มาเงิน' : SRC_LABEL[F.src]}`;
+  await saveWb(buildLedgerWb(EX, { period, filters, by: ST.me.name, rows }), `C2-Pay-Ledger-${F.mon === 'all' ? 'all' : F.mon}.xlsx`);
 }
 
 // ---------- เงินสดย่อย (เต็ม) ----------
@@ -1049,6 +1063,117 @@ function vPc() {
       ${rows.map((e) => `<tr ${e.ref && doc(e.ref) ? `class="click" data-act="openDoc" data-v="${esc(e.ref)}"` : ''}><td>${dt(e.date)}</td><td class="num">${esc(e.no)}</td><td>${esc(e.note)}${e.adjust ? ' <span class="pill p-pending">ปรับยอดตรวจนับ</span>' : ''}<br><small style="color:var(--sub)">${esc(e.byName || '')}</small></td><td>${ref(e.ref)}</td><td class="r num in">${e.kind === 'in' ? fmt(e.amount) : ''}</td><td class="r num out">${e.kind === 'out' ? fmt(e.amount) : ''}</td><td class="r num">${fmt(e.after)}</td></tr>`).join('') || '<tr><td colspan="7" class="empty">ยังไม่มีรายการ</td></tr>'}
     </tbody></table></div>
     <div class="clist">${rows.map((e) => `<div class="ccard"><div class="row"><span style="min-width:0">${esc(e.note)}<br><small>${dt(e.date)}${e.ref ? ' · ' + esc(e.ref) : ''}</small></span><span class="sp" style="text-align:right"><b class="num ${e.kind}">${e.kind === 'in' ? '+' : '−'}${fmt(e.amount)}</b><br><small class="num">เหลือ ${fmt(e.after)}</small></span></div></div>`).join('') || '<div class="card empty">ยังไม่มีรายการ</div>'}</div>`;
+}
+
+// ===== ส่งออก Excel แบบจัดรูปแบบ (ExcelJS) · ใช้ได้ทั้งในเบราว์เซอร์และ Node =====
+const XC = { G: 'FF3F654D', G2: 'FF63816F', T: 'FFE4ECE7', Z: 'FFF4F7F5', L: 'FFD2DCD8', INK: 'FF201E1D', SUB: 'FF5F6C65', GOLD: 'FFC9A23F', W: 'FFFFFFFF' };
+const XF = 'Tahoma';
+const xFill = (c) => ({ type: 'pattern', pattern: 'solid', fgColor: { argb: c } });
+const xLine = (c = XC.L, s = 'thin') => ({ style: s, color: { argb: c } });
+const NUM = '#,##0.00;[Red]-#,##0.00', NUM0 = '#,##0', PCT = '0.0%';
+function xSheet(wb, name, cols, opt = {}) {
+  const ws = wb.addWorksheet(name, { views: [{ showGridLines: false }], properties: { defaultRowHeight: 20, tabColor: { argb: opt.tab || XC.G } },
+    pageSetup: { paperSize: 9, orientation: opt.landscape ? 'landscape' : 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0, margins: { left: .4, right: .4, top: .5, bottom: .5, header: .25, footer: .25 } },
+    headerFooter: { oddFooter: `&L&8C2-Pay · ${name}&R&8หน้า &P / &N` } });
+  ws.columns = cols.map((c) => ({ width: c.w || 14 }));
+  return ws;
+}
+/** หัวกระดาษ 4 แถว: ชื่อรายงาน · บริษัท · ช่วง/วันที่พิมพ์ · แถบสี */
+function xHead(ws, title, sub, meta, span) {
+  ws.mergeCells(1, 1, 1, span); ws.mergeCells(2, 1, 2, span); ws.mergeCells(3, 1, 3, span);
+  const a = ws.getCell(1, 1); a.value = title; a.font = { name: XF, size: 16, bold: true, color: { argb: XC.G } }; ws.getRow(1).height = 28;
+  const b = ws.getCell(2, 1); b.value = sub; b.font = { name: XF, size: 10, color: { argb: XC.SUB } };
+  const c = ws.getCell(3, 1); c.value = meta; c.font = { name: XF, size: 9, color: { argb: XC.SUB }, italic: true };
+  for (let i = 1; i <= span; i++) ws.getCell(4, i).fill = xFill(XC.G); ws.getRow(4).height = 4;
+  return 6;
+}
+function xSection(ws, r, text, span) {
+  ws.mergeCells(r, 1, r, span); const c = ws.getCell(r, 1); c.value = text; c.font = { name: XF, size: 11.5, bold: true, color: { argb: XC.G } };
+  c.border = { bottom: xLine(XC.G, 'medium') }; ws.getRow(r).height = 22; return r + 1;
+}
+/** ตาราง: หัวสีเขียว แถวสลับสี ขอบบาง แถวรวม (สูตร SUM) */
+function xTable(ws, r, cols, rows, opt = {}) {
+  const h = ws.getRow(r); cols.forEach((c, i) => { const x = h.getCell(i + 1); x.value = c.h; x.font = { name: XF, size: 10, bold: true, color: { argb: XC.W } }; x.fill = xFill(XC.G);
+    x.alignment = { vertical: 'middle', horizontal: c.num || c.pct ? 'right' : 'left', wrapText: true }; x.border = { top: xLine(XC.G), bottom: xLine(XC.G), left: xLine(XC.G), right: xLine(XC.G) }; });
+  h.height = 24; const r0 = r + 1;
+  rows.forEach((row, k) => { const R = ws.getRow(r0 + k); cols.forEach((c, i) => { const x = R.getCell(i + 1); const v = typeof c.v === 'function' ? c.v(row, r0 + k) : row[c.k];
+    x.value = v == null ? '' : v; x.font = { name: XF, size: 10, color: { argb: XC.INK }, ...(c.font || {}) };
+    if (c.num) x.numFmt = c.int ? NUM0 : NUM; if (c.pct) x.numFmt = PCT; if (c.date) x.numFmt = '[$-1070000]dd/mm/yyyy';
+    x.alignment = { vertical: 'top', horizontal: c.num || c.pct ? 'right' : c.center ? 'center' : 'left', wrapText: !!c.wrap };
+    x.border = { bottom: xLine(), left: xLine(), right: xLine() }; if (k % 2) x.fill = xFill(XC.Z); }); });
+  const rN = r0 + rows.length - 1;
+  if (opt.total && rows.length) {
+    const T = ws.getRow(rN + 1); cols.forEach((c, i) => { const x = T.getCell(i + 1); const L = colL(i + 1);
+      x.value = i === 0 ? (opt.totalLabel || `รวม ${rows.length} รายการ`) : c.sum ? { formula: `SUM(${L}${r0}:${L}${rN})` } : c.pctOf ? { formula: `SUM(${L}${r0}:${L}${rN})` } : '';
+      x.font = { name: XF, size: 10.5, bold: true, color: { argb: XC.INK } }; x.fill = xFill(XC.T); if (c.num) x.numFmt = c.int ? NUM0 : NUM; if (c.pctOf) x.numFmt = PCT;
+      x.alignment = { horizontal: c.num || c.pctOf ? 'right' : 'left' }; x.border = { top: xLine(XC.G, 'medium'), bottom: xLine(XC.G, 'medium') }; });
+    T.height = 22;
+  }
+  if (opt.bar && rows.length) { const L = colL(opt.bar); ws.addConditionalFormatting({ ref: `${L}${r0}:${L}${rN}`, rules: [{ type: 'dataBar', minLength: 0, maxLength: 100, gradient: false, cfvo: [{ type: 'num', value: 0 }, { type: 'max' }], color: { argb: 'FF9DB8A9' } }] }); }
+  if (opt.filter && rows.length) ws.autoFilter = { from: { row: r, column: 1 }, to: { row: rN, column: cols.length } };
+  if (opt.freeze) ws.views = [{ state: 'frozen', ySplit: r, showGridLines: false }];
+  if (opt.printTitle) ws.pageSetup.printTitlesRow = `${r}:${r}`;
+  return { r0, rN, next: rN + (opt.total ? 3 : 2) };
+}
+const colL = (n) => { let s = ''; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; };
+/** การ์ดตัวเลขสรุป: 2 คอลัมน์ต่อการ์ด */
+function xKpis(ws, r, items) {
+  items.forEach((it, i) => { const c0 = 1 + i * 2; ws.mergeCells(r, c0, r, c0 + 1); ws.mergeCells(r + 1, c0, r + 1, c0 + 1); ws.mergeCells(r + 2, c0, r + 2, c0 + 1);
+    const a = ws.getCell(r, c0), b = ws.getCell(r + 1, c0), m = ws.getCell(r + 2, c0);
+    a.value = it.l; a.font = { name: XF, size: 9, color: { argb: XC.SUB } };
+    b.value = it.v; b.font = { name: XF, size: 18, bold: true, color: { argb: it.tone || XC.G } }; b.numFmt = it.int ? NUM0 : '#,##0';
+    m.value = it.m || ''; m.font = { name: XF, size: 8.5, color: { argb: XC.SUB } };
+    [a, b, m].forEach((x, k) => { x.fill = xFill(XC.Z); x.alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
+      x.border = { left: xLine(XC.G, 'thick'), top: k === 0 ? xLine() : undefined, bottom: k === 2 ? xLine() : undefined, right: xLine() }; }); });
+  ws.getRow(r).height = 18; ws.getRow(r + 1).height = 30; ws.getRow(r + 2).height = 16;
+  return r + 4;
+}
+const thaiNow = () => { const d = new Date(); const M = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']; return `${d.getDate()} ${M[d.getMonth()]} ${d.getFullYear() + 543} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
+const toDate = (s) => { const [y, m, d] = String(s).split('-').map(Number); return new Date(Date.UTC(y, m - 1, d)); };
+const CO = 'บริษัท ซีทูเทค จำกัด · 99/3 หมู่ 9 ต.วังไก่เถื่อน อ.หันคา จ.ชัยนาท 17130';
+
+/** รายงาน: D = { period, by, total, kpis[], byCat[[k,v]], byType[[k,v]], byStaff[{name,n,trips,days,amt}], byCust[[k,{n,amt}]], trend[[label,v]]|null, rows[{date,no,cat,desc,ref,src,amount}] } */
+function buildReportWb(ExcelJS, D) {
+  const wb = new ExcelJS.Workbook(); wb.creator = 'C2-Pay'; wb.created = new Date();
+  const meta = `ช่วง ${D.period} · พิมพ์เมื่อ ${thaiNow()}${D.by ? ` โดย ${D.by}` : ''} · ข้อมูลจากสมุดค่าใช้จ่าย (ลงเมื่อปิดใบ/จ่ายแล้ว)`;
+  // สรุป
+  let ws = xSheet(wb, 'สรุป', [{ w: 16 }, { w: 14 }, { w: 16 }, { w: 14 }, { w: 16 }, { w: 14 }, { w: 16 }, { w: 14 }]);
+  let r = xHead(ws, `C2-Pay · รายงานค่าใช้จ่าย ${D.period}`, CO, meta, 8);
+  r = xKpis(ws, r, D.kpis);
+  r = xSection(ws, r, 'ค่าใช้จ่ายตามหมวด', 8);
+  const tot = D.total || 1;
+  ws.mergeCells; // (ตารางหมวดใช้คอลัมน์ A–D)
+  let t = xTable(ws, r, [{ h: 'หมวด', k: 0 }, { h: 'ยอด (บาท)', k: 1, num: 1, sum: 1 }, { h: 'สัดส่วน', v: (x, rr) => ({ formula: `B${rr}/${D.total || 1}` }), pct: 1, pctOf: 1 }, { h: '', v: () => '' }], D.byCat, { total: 1, totalLabel: 'รวมทั้งหมด', bar: 2 });
+  r = xSection(ws, t.next, 'ตามประเภทใบ', 8);
+  t = xTable(ws, r, [{ h: 'ประเภท', k: 0 }, { h: 'ยอด (บาท)', k: 1, num: 1, sum: 1 }, { h: 'สัดส่วน', v: (x, rr) => ({ formula: `B${rr}/${D.total || 1}` }), pct: 1, pctOf: 1 }], D.byType, { total: 1, totalLabel: 'รวม', bar: 2 });
+  if (D.trend) { r = xSection(ws, t.next, 'รายเดือน', 8); t = xTable(ws, r, [{ h: 'เดือน', k: 0 }, { h: 'ยอด (บาท)', k: 1, num: 1, sum: 1 }], D.trend, { total: 1, totalLabel: 'รวมทั้งปี', bar: 2 }); }
+  ws.getColumn(1).width = 22;
+  // ทีมงาน
+  ws = xSheet(wb, 'ตามทีมงาน', [{ w: 28 }, { w: 10 }, { w: 10 }, { w: 14 }, { w: 16 }, { w: 22 }]);
+  r = xHead(ws, 'ค่าใช้จ่ายตามทีมงาน', CO, meta, 6);
+  xTable(ws, r, [{ h: 'ทีมงาน', k: 'name' }, { h: 'ใบ', k: 'n', num: 1, int: 1, sum: 1 }, { h: 'ทริป', k: 'trips', num: 1, int: 1, sum: 1 }, { h: 'วันเดินทาง', k: 'days', num: 1, int: 1, sum: 1 }, { h: 'ค่าใช้จ่าย (บาท)', k: 'amt', num: 1, sum: 1 }, { h: '', v: () => '' }], D.byStaff, { total: 1, bar: 5, printTitle: 1 });
+  // ลูกค้า
+  ws = xSheet(wb, 'ตามลูกค้า', [{ w: 34 }, { w: 10 }, { w: 16 }, { w: 22 }]);
+  r = xHead(ws, 'ค่าใช้จ่ายตามลูกค้า / สถานที่', CO, `${meta} · ทริปหลายที่หารเท่ากันตามจำนวนสถานที่`, 4);
+  xTable(ws, r, [{ h: 'ลูกค้า / สถานที่', k: 0 }, { h: 'ครั้ง', v: (x) => x[1].n, num: 1, int: 1, sum: 1 }, { h: 'ค่าใช้จ่าย (บาท)', v: (x) => Math.round(x[1].amt * 100) / 100, num: 1, sum: 1 }], D.byCust, { total: 1, bar: 3, printTitle: 1 });
+  // รายการ
+  ws = xSheet(wb, 'รายการ', [{ w: 13 }, { w: 15 }, { w: 18 }, { w: 46 }, { w: 15 }, { w: 14 }, { w: 15 }], { landscape: 1, tab: XC.G2 });
+  r = xHead(ws, `รายการค่าใช้จ่าย ${D.period}`, CO, meta, 7);
+  xTable(ws, r, [{ h: 'วันที่', v: (e) => toDate(e.date), date: 1 }, { h: 'เลขที่', k: 'no' }, { h: 'หมวด', k: 'cat' }, { h: 'รายการ', k: 'desc', wrap: 1 }, { h: 'อ้างอิงใบ', k: 'ref' }, { h: 'ที่มาเงิน', v: (e) => e.src === 'BANK' ? 'โอนจากบัญชี' : 'เงินสดย่อย' }, { h: 'ยอด (บาท)', k: 'amount', num: 1, sum: 1 }], D.rows, { total: 1, filter: 1, freeze: 1, printTitle: 1 });
+  return wb;
+}
+/** สมุดค่าใช้จ่าย: L = { period, filters, by, rows } */
+function buildLedgerWb(ExcelJS, L) {
+  const wb = new ExcelJS.Workbook(); wb.creator = 'C2-Pay'; wb.created = new Date();
+  const meta = `${L.filters} · พิมพ์เมื่อ ${thaiNow()}${L.by ? ` โดย ${L.by}` : ''}`;
+  let ws = xSheet(wb, 'สมุดค่าใช้จ่าย', [{ w: 13 }, { w: 15 }, { w: 18 }, { w: 46 }, { w: 15 }, { w: 14 }, { w: 15 }], { landscape: 1 });
+  let r = xHead(ws, `สมุดค่าใช้จ่าย ${L.period}`, CO, meta, 7);
+  xTable(ws, r, [{ h: 'วันที่', v: (e) => toDate(e.date), date: 1 }, { h: 'เลขที่', k: 'no' }, { h: 'หมวด', k: 'cat' }, { h: 'รายการ', k: 'desc', wrap: 1 }, { h: 'อ้างอิงใบ', k: 'ref' }, { h: 'ที่มาเงิน', v: (e) => e.src === 'BANK' ? 'โอนจากบัญชี' : 'เงินสดย่อย' }, { h: 'ยอด (บาท)', k: 'amount', num: 1, sum: 1 }], L.rows, { total: 1, filter: 1, freeze: 1, printTitle: 1 });
+  const by = {}; L.rows.forEach((e) => { by[e.cat] = (by[e.cat] || 0) + e.amount; }); const tot = L.rows.reduce((t, e) => t + e.amount, 0) || 1;
+  ws = xSheet(wb, 'สรุปตามหมวด', [{ w: 26 }, { w: 16 }, { w: 12 }, { w: 24 }]);
+  r = xHead(ws, `สรุปตามหมวด ${L.period}`, CO, meta, 4);
+  xTable(ws, r, [{ h: 'หมวด', k: 0 }, { h: 'ยอด (บาท)', k: 1, num: 1, sum: 1 }, { h: 'สัดส่วน', v: (x, rr) => ({ formula: `B${rr}/${tot}` }), pct: 1, pctOf: 1 }], Object.entries(by).sort((a, b) => b[1] - a[1]), { total: 1, totalLabel: 'รวมทั้งหมด', bar: 2 });
+  return wb;
 }
 
 // ---------- ใบสำคัญหลังเคลียร์ (RV / PV / CL) ----------
@@ -1153,16 +1278,13 @@ function rptData() {
   return { rows, total, byCat, byType, bySrc, byStaff, byCust, trips: tripDocs.length, km, openN: openD.length, openAmt: openD.reduce((t, d) => t + (d.requested || 0), 0), trend, tmax };
 }
 async function rptXlsx() {
-  if (!window.XLSX) await loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
-  const R = rptData(), F = ST.rf, name = F.p === 'm' ? F.m : F.y, wb = XLSX.utils.book_new();
-  const add = (rows, n) => XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.length ? rows : [{ ว่าง: '' }]), n);
-  add([{ รายการ: 'ช่วง', ค่า: F.p === 'm' ? monTH(F.m) : `ปี ${Number(F.y) + 543}` }, { รายการ: 'ค่าใช้จ่ายรวม', ค่า: R.total }, { รายการ: 'ค่าเดินทาง (TRV)', ค่า: R.byType.TRV || 0 }, { รายการ: 'จำนวนทริปที่ปิดแล้ว', ค่า: R.trips }, { รายการ: 'ระยะทางรวม (กม.)', ค่า: R.km }, { รายการ: 'จ่ายจากเงินสดย่อย', ค่า: R.bySrc.PC || 0 }, { รายการ: 'โอนจากบัญชี', ค่า: R.bySrc.BANK || 0 }], 'สรุป');
-  add(R.byCat.map(([k, v]) => ({ หมวด: k, ยอด: v })), 'ตามหมวด');
-  add(R.byStaff.map((o) => ({ ทีมงาน: o.name, ใบ: o.n, ทริป: o.trips, วันเดินทาง: o.days, ค่าใช้จ่าย: Math.round(o.amt * 100) / 100 })), 'ตามทีมงาน');
-  add(R.byCust.map(([k, o]) => ({ 'ลูกค้า/สถานที่': k, ครั้ง: o.n, ค่าใช้จ่าย: Math.round(o.amt * 100) / 100 })), 'ตามลูกค้า');
-  if (R.trend) add(R.trend.map(([m, v]) => ({ เดือน: MON[m], ยอด: v })), 'รายเดือน');
-  add(R.rows.map((e) => ({ วันที่: e.date, เลขที่: e.no, หมวด: e.cat, รายการ: e.desc, อ้างอิงใบ: e.ref || '', ที่มาเงิน: SRC_LABEL[e.src] || '', ยอด: e.amount })), 'รายการ');
-  saveBlob(`C2-Pay-รายงาน-${name}.xlsx`, new Blob([XLSX.write(wb, { type: 'array', bookType: 'xlsx' })], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+  const EX = await loadExcelJS(), R = rptData(), F = ST.rf;
+  const period = F.p === 'm' ? monTH(F.m) : `ปี ${Number(F.y) + 543}`;
+  const D = { period, by: ST.me.name, total: R.total, rows: R.rows,
+    kpis: [{ l: 'ค่าใช้จ่ายรวม', v: R.total, m: `${R.rows.length} รายการในสมุด` }, { l: 'ค่าเดินทาง (TRV)', v: R.byType.TRV || 0, m: `${R.trips} ทริป · ${fmt(R.km)} กม.` }, { l: 'จ่ายจากเงินสดย่อย', v: R.bySrc.PC || 0, m: `โอน ${fmt(R.bySrc.BANK || 0)}` }, { l: 'ใบที่ยังไม่ปิด', v: R.openN, int: 1, m: R.openAmt ? `ยอดเบิกค้าง ${fmt(R.openAmt)}` : 'ไม่มีค้าง', tone: R.openN ? 'FFB83A30' : undefined }],
+    byCat: R.byCat, byType: Object.entries(R.byType).filter(([, v]) => v).map(([k, v]) => [`${k} · ${TYPE_LABEL[k] || 'อื่นๆ'}`, v]).sort((a, b) => b[1] - a[1]),
+    byStaff: R.byStaff.map((o) => ({ ...o, amt: Math.round(o.amt * 100) / 100 })), byCust: R.byCust, trend: R.trend ? R.trend.map(([m, v]) => [MON[m], v]) : null };
+  await saveWb(buildReportWb(EX, D), `C2-Pay-Report-${F.p === 'm' ? F.m : F.y}.xlsx`);
 }
 
 const fmtN = (n) => Number(n || 0).toLocaleString('th-TH');
@@ -1194,7 +1316,36 @@ function readFile(file) {
     img.onerror = () => { URL.revokeObjectURL(url); reject(new Error(/heic|heif/i.test(file.type + file.name) ? 'ไฟล์ HEIC ของ iPhone เปิดไม่ได้ · ถ่ายภาพหน้าจอรูปนั้นแล้วแนบใหม่' : 'เปิดรูปไม่ได้ · ลองแนบเป็น JPG/PNG')); }; img.src = url;
   });
 }
-function saveBlob(name, blob) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500); }
+// ===== เปิดอยู่ใน Google Sites (iframe) · window.print() และการดาวน์โหลดถูกบล็อก → พิมพ์ผ่านหน้าต่างใหม่ =====
+const IN_FRAME = (() => { try { return window.self !== window.top; } catch (e) { return true; } })();
+function printNow() {
+  if (!IN_FRAME) { window.print(); return; }
+  const pages = $('#printv .pages'); if (!pages) return;
+  const w = window.open('', '_blank');
+  if (!w) { framePrintHelp(); return; }
+  const base = location.href.split('#')[0].replace(/[^/]*$/, '');
+  // ฝัง CSS ของแอปและรูปลงในหน้าต่างพิมพ์เลย (ไม่ต้องโหลดซ้ำ) · ฟอนต์ Google ใช้ลิงก์เดิม
+  let css = '';
+  [...document.styleSheets].forEach((sh) => { try { if (sh.href && /fonts\.googleapis/.test(sh.href)) css += `<link rel="stylesheet" href="${sh.href}">`; else css += `<style>${[...sh.cssRules].map((r) => r.cssText).join('\n')}</style>`; } catch (e) { if (sh.href) css += `<link rel="stylesheet" href="${sh.href}">`; } });
+  const imgs = {}; pages.querySelectorAll('img').forEach((im) => { const k = im.getAttribute('src'); if (imgs[k] || !im.naturalWidth) return; try { const cv = document.createElement('canvas'); cv.width = im.naturalWidth; cv.height = im.naturalHeight; cv.getContext('2d').drawImage(im, 0, 0); imgs[k] = cv.toDataURL('image/png'); } catch (e) { /* ใช้ลิงก์เดิม */ } });
+  let html = pages.innerHTML; Object.entries(imgs).forEach(([k, v]) => { html = html.split(`src="${k}"`).join(`src="${v}"`); });
+  const title = ($('#printv .pbar b') || {}).textContent || 'C2-Pay';
+  w.document.open();
+  w.document.write(`<!doctype html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><base href="${base}"><title>${esc(title)} · พิมพ์</title><script>(function(){var t0=Date.now(),done=false;function go(){if(done)return;if(document.readyState==='complete'||Date.now()-t0>4000){done=true;setTimeout(function(){window.print();},250);}else setTimeout(go,200);}setTimeout(go,300);})();<\/script>${css}
+    <style>body{background:#E8EDEA;display:block}#printv{position:static!important;display:block!important;background:transparent}#printv .pbar{position:sticky;top:0;z-index:5}@media print{#printv .pbar{display:none!important}}</style></head>
+    <body><div id="printv" class="printv on"><div class="pbar"><b>${esc(title)}</b><small>หน้าต่างพิมพ์ · ถ้าหน้าต่างพิมพ์ไม่ขึ้น กดปุ่มนี้</small><span style="margin-left:auto;display:flex;gap:8px"><button class="btn pri sm" onclick="window.print()">พิมพ์ / บันทึก PDF</button><button class="btn sm" onclick="window.close()">ปิด</button></span></div><div class="pages">${html}</div></div></body></html>`);
+  w.document.close();
+}
+function framePrintHelp() {
+  toast('เบราว์เซอร์บล็อกหน้าต่างใหม่ · กด "เปิดในแท็บใหม่" แล้วพิมพ์จากแท็บนั้น', 'error');
+  const bar = $('#printv .pbar'); if (bar && !bar.querySelector('[data-act="openTab"]')) bar.insertAdjacentHTML('beforeend', `<button class="btn sm" data-act="openTab">${ms('open_in_new')}เปิดในแท็บใหม่</button>`);
+}
+function saveBlob(name, blob) {
+  if (IN_FRAME) { // Google Sites บล็อกการดาวน์โหลดใน iframe → ดาวน์โหลดผ่านหน้าต่างใหม่
+    const w = window.open('', '_blank');
+    if (w) { let url; try { url = w.URL.createObjectURL(blob); } catch (e) { url = URL.createObjectURL(blob); } w.document.open(); w.document.write(`<!doctype html><html lang="th"><head><meta charset="utf-8"><title>${esc(name)}</title></head><body style="font-family:Tahoma,sans-serif;padding:32px;color:#201E1D"><p>กำลังดาวน์โหลด <b>${esc(name)}</b> …</p><p><a id="dl" href="${url}" download="${esc(name)}" style="color:#3F654D">ถ้าไฟล์ไม่เริ่มดาวน์โหลด กดที่นี่</a></p><p style="color:#5F6C65;font-size:13px">ดาวน์โหลดเสร็จแล้วปิดแท็บนี้ได้เลย</p><script>setTimeout(function(){document.getElementById('dl').click();},200);<\/script></body></html>`); w.document.close(); return; }
+    toast('เบราว์เซอร์บล็อกหน้าต่างใหม่ · กด "เปิดในแท็บใหม่" ที่มุมขวาบน แล้วส่งออกอีกครั้ง', 'error');
+  } const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500); }
 function loadScript(src) { return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('โหลดตัวสร้าง Excel ไม่ได้')); document.head.appendChild(s); }); }
 
 let backupCache = null;
@@ -1392,7 +1543,8 @@ async function trvClick(a, v, b) {
   // รอบ 4: ใบเสนอ CEO
   if (a === 'openBatch') { drawBatch(v); return true; }
   if (a === 'apvPrint') { await busy(b, () => apvPrint(v)); return true; }
-  if (a === 'doPrint') { window.print(); return true; }
+  if (a === 'doPrint') { printNow(); return true; }
+  if (a === 'openTab') { window.open(location.href.split('#')[0], '_blank', 'noopener'); return true; }
   if (a === 'closePrint') { $('#printv')?.classList.remove('on'); return true; }
   if (a === 'apvCreate') {
     const ids = ST.apv.wait.filter((x) => !ST.unsel.has(x.id)).map((x) => x.id);
