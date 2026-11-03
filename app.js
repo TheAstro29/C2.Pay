@@ -327,16 +327,16 @@ function bankForm(target, m) {
 function vUsers() {
   if (!ST.members) { loadMembers(); return `<div class="loading" style="padding:40px"><div class="spin"></div></div>`; }
   const admins = ST.members.filter((m) => m.role === 'admin');
-  const sel = (m) => `<select class="sel" aria-label="สิทธิ์ C2-Pay ของ ${esc(m.name)}" data-role="${m.id}" style="min-width:170px">${['admin', 'ceo', 'user', 'none'].map((r) => `<option value="${r}" ${m.role === r ? 'selected' : ''}>${ROLE_LABEL[r]}</option>`).join('')}</select>`;
+  const sel = (m) => `<select class="sel" aria-label="สิทธิ์ C2-Pay ของ ${esc(m.name)}" data-role="${m.id}">${['admin', 'ceo', 'user', 'none'].map((r) => `<option value="${r}" ${m.role === r ? 'selected' : ''}>${ROLE_LABEL[r]}</option>`).join('')}</select>`;
   const bankLine = (m) => {
     if (m.role !== 'user' && m.role !== 'admin' && !m.bank) return '';
     if (!m.bank) return `${m.role === 'user' ? '<span class="pill p-over">ยังไม่มีบัญชีรับโอน</span>' : ''}${isCust() ? `<button class="btn sm" data-act="bankEdit" data-v="${m.id}">${ms('add')}เพิ่มเลขบัญชี</button>` : ''}`;
     return `<span class="meta">${ms('account_balance', 'style="font-size:16px;vertical-align:-3px"')} ${esc(m.bank.bank)} <span class="num">${esc(m.bank.no)}</span></span>${m.bank.changedAt ? `<span class="pill p-pending">แก้ล่าสุด ${dtTime(m.bank.changedAt).split(' ').slice(0, 3).join(' ')}</span>` : ''}${isCust() ? `<button class="btn sm" data-act="bankEdit" data-v="${m.id}">${ms('edit')}แก้เลขบัญชี</button>${m.bank.file ? `<button class="btn sm ghost" data-act="fileView" data-v="${esc(m.bank.file.path)}">${ms('image')}สำเนา</button>` : ''}` : `<span class="meta">${ms('lock', 'style="font-size:15px;vertical-align:-3px"')}แก้ได้เฉพาะผู้ดูแลเลขบัญชี</span>`}`;
   };
-  const row = (m) => `<div class="urow" style="display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center">
+  const row = (m) => `<div class="urow ug">
       <span class="av">${esc((m.name || '?').slice(0, 1))}</span>
-      <span class="who" style="min-width:0"><b>${esc(m.name)}${m.id === ST.me.id ? ' (คุณ)' : ''}</b><small class="num">${esc(m.username)} · C2-Calendar: ${esc(m.calRole)}</small>
-        <span style="display:flex;gap:6px;flex-wrap:wrap;margin-top:5px;align-items:center">${m.isCustodian ? `<span class="pill p-closed">${ms('key', 'style="font-size:15px"')}ผู้ดูแลเลขบัญชี</span>` : ''}${m.isNew ? '<span class="pill p-open">ใหม่จาก C2-Calendar</span>' : ''}<span class="meta" style="min-width:0">${m.set ? 'ตั้งเอง' : 'สิทธิ์ตามค่าเริ่มต้น'}</span>${bankLine(m)}</span></span>
+      <span class="who"><b>${esc(m.name)}${m.id === ST.me.id ? ' (คุณ)' : ''}</b><small class="num">${esc(m.username)} · C2-Calendar: ${esc(m.calRole)}</small>
+        <span class="uchips">${m.isCustodian ? `<span class="pill p-closed">${ms('key', 'style="font-size:15px"')}ผู้ดูแลเลขบัญชี</span>` : ''}${m.isNew ? '<span class="pill p-open">ใหม่จาก C2-Calendar</span>' : ''}<span class="meta">${m.set ? 'ตั้งเอง' : 'สิทธิ์ตามค่าเริ่มต้น'}</span>${bankLine(m)}</span></span>
       ${sel(m)}</div>${ST.bankEdit === m.id ? bankForm(m.id, m) : ''}`;
   const custCard = `<div class="card"><h3>${ms('key')}ผู้ดูแลเลขบัญชี</h3><div class="lines"><div><span>ผู้ดูแลตอนนี้</span><b>${esc(ST.custodianName)}</b></div><div><span>มีได้</span><b>1 คนเท่านั้น</b></div></div>
       ${isCust() ? `<div class="fgrid" style="grid-template-columns:1fr;margin-top:10px"><div class="field"><label for="ho-to">ส่งต่อสิทธิ์ให้ (ต้องเป็น Admin ของ C2-Pay)</label><select class="sel" id="ho-to"><option value="">— เลือก —</option>${admins.filter((a) => a.id !== ST.me.id).map((a) => `<option value="${a.id}">${esc(a.name)}</option>`).join('')}</select></div>
@@ -351,6 +351,9 @@ function vUsers() {
         <div><span><b>User</b><br><span class="f">ขอเบิกและเคลียร์ทริปของตัวเอง · ต้องมีบัญชีรับโอน</span></span></div>
         <div><span><b>ไม่มีสิทธิ์</b><br><span class="f">เข้าระบบได้ แต่เห็นข้อความให้ติดต่อ Admin</span></span></div></div></div></div></div>`;
 }
+
+function fitPrint() { const pv = $('#printv'); if (pv) pv.style.setProperty('--pz', String(Math.min(1, (window.innerWidth - 32) / 794))); }
+window.addEventListener('resize', fitPrint);
 
 function vHistory() {
   if (!ST.bankLog) { loadHistory(); return `<div class="loading" style="padding:40px"><div class="spin"></div></div>`; }
@@ -762,7 +765,7 @@ function vPayq() {
     <td>${esc(x.payee)}<span style="display:block;color:var(--sub);font-size:12.5px">${bankLine(x)}</span>${x.bankPending ? `<label class="ckl" style="color:var(--bad);font-size:12.5px;margin-top:4px"><input type="checkbox" data-bconf="${esc(x.id)}" ${bc.has(x.id) ? 'checked' : ''}> บัญชีเพิ่งเปลี่ยน · ตรวจกับเจ้าตัวแล้ว</label>` : ''}</td><td class="r num">${fmt(x.amount)}</td></tr>`;
   return `<p style="margin:0 0 14px;color:var(--sub)">รวมรายการที่ต้องโอนเป็นใบเดียว → พิมพ์เสนอ <b style="color:var(--ink)">CEO</b> เซ็น → <b style="color:var(--ink)">ส่งเรื่องเข้าระบบ</b> ธนาคาร → <b style="color:var(--ink)">COO</b> อนุมัติ → แนบสลิป · รายการที่จ่ายจากเงินสดย่อยไม่ต้องผ่านขั้นนี้</p>
   <div class="grid g2" style="align-items:start"><div class="card"><h3>${ms('pending_actions')}รายการรอเข้าใบเสนอ CEO<span class="r">${W.length} รายการ</span></h3>
-    ${W.length ? `<div class="tablewrap"><table><thead><tr><th style="width:36px">${isAdmin() ? `<input type="checkbox" class="chk" id="selAll" aria-label="เลือกทั้งหมด" ${sel.length === W.length ? 'checked' : ''}>` : ''}</th><th>รายการ</th><th>ผู้รับเงิน</th><th class="r">ยอด</th></tr></thead><tbody>${W.map(row).join('')}</tbody>
+    ${W.length ? `<div class="tablewrap"><table class="pqt"><thead><tr><th style="width:36px">${isAdmin() ? `<input type="checkbox" class="chk" id="selAll" aria-label="เลือกทั้งหมด" ${sel.length === W.length ? 'checked' : ''}>` : ''}</th><th>รายการ</th><th>ผู้รับเงิน</th><th class="r">ยอด</th></tr></thead><tbody>${W.map(row).join('')}</tbody>
       <tfoot><tr><td></td><td colspan="2">เลือก ${sel.length} รายการ</td><td class="r num">${fmt(sum)}</td></tr></tfoot></table></div>
       ${isAdmin() ? `<button class="btn pri block" style="margin-top:12px" data-act="apvCreate" ${sel.length ? '' : 'disabled'}>${ms('note_add')}สร้างใบเสนอ CEO ${sel.length} รายการ · ${fmt(sum)} บาท</button>` : ''}`
     : '<div class="empty">ไม่มีรายการรอ · รายการที่เลือก "โอนจากบัญชี" จะมาอยู่ที่นี่</div>'}</div>
@@ -830,7 +833,7 @@ async function apvPrint(no) {
   const p2 = `<div class="a4">${a4Head('รายละเอียดประกอบใบเสนอ', `${b.no} · ${b.items.length} รายการ · รวม ${fmt(b.total)} บาท`, '<b>รายละเอียด</b>')}${b.items.map((x, i) => detailOf(x, r.docs[x.ref], r.pcr, i)).join('')}<div class="pfoot"><span>C2-Pay · ${b.no}</span><span>หน้า 2</span></div></div>`;
   let pv = $('#printv'); if (!pv) { pv = document.createElement('div'); pv.id = 'printv'; pv.className = 'printv'; document.body.appendChild(pv); }
   pv.innerHTML = `<div class="pbar"><b>${b.no}</b><small>ใบเสนอ CEO · A4 2 หน้า</small><span style="margin-left:auto;display:flex;gap:8px"><button class="btn pri sm" data-act="doPrint">${ms('print')}พิมพ์ / บันทึก PDF</button><button class="btn sm" data-act="closePrint">${ms('close')}ปิด</button></span></div><div class="pages">${p1}${p2}</div>`;
-  pv.classList.add('on');
+  pv.classList.add('on'); fitPrint();
 }
 
 // ======================================================================
@@ -1057,7 +1060,7 @@ function vPc() {
       <div style="font-size:13px;color:var(--sub)">ใช้ไปตั้งแต่เติมครั้งก่อน${lastTop ? ` (${dt(lastTop.date)})` : ''} <b class="num" style="color:var(--ink)">${fmt(used)}</b> บาท</div>
       <div style="font-size:12.5px;margin-top:6px;color:${low ? 'var(--bad)' : 'var(--sub)'};font-weight:${low ? 600 : 400}">${low ? `ต่ำกว่า ${fmt(P.lowAlert)} บาท · ควรเติม` : `เตือนเมื่อคงเหลือต่ำกว่า ${fmt(P.lowAlert)} บาท`}</div>
       ${P.pcr ? `<div class="banner info" style="margin-top:8px">${ms('approval')}<span>เบิกชดเชย <b class="num">${fmt(P.pcr.amount)}</b> บาท ${P.pcr.batch ? `อยู่ในใบเสนอ <b class="num">${esc(P.pcr.batch)}</b>` : 'รอเข้าใบเสนอ CEO'}</span>${isAdmin() && !P.pcr.batch ? `<button class="btn sm" data-act="pcrCancel" style="margin-left:auto">ยกเลิกคำขอ</button>` : ''}</div>` : ''}</div>
-      ${isAdmin() ? `<div style="display:flex;flex-direction:column;gap:8px"><button class="btn ${low ? 'pri' : ''}" data-act="pcForm" data-v="rep">${ms('request_page')}ยอดที่ควรเบิกชดเชย</button><button class="btn" data-act="pcForm" data-v="count">${ms('calculate')}ตรวจนับเงิน</button><button class="btn" data-act="pcForm" data-v="topup">${ms('add')}เติมเงิน</button></div>` : ''}</div>${forms}</div>
+      ${isAdmin() ? `<div class="pcacts"><button class="btn ${low ? 'pri' : ''}" data-act="pcForm" data-v="rep">${ms('request_page')}ยอดที่ควรเบิกชดเชย</button><button class="btn" data-act="pcForm" data-v="count">${ms('calculate')}ตรวจนับเงิน</button><button class="btn" data-act="pcForm" data-v="topup">${ms('add')}เติมเงิน</button></div>` : ''}</div>${forms}</div>
     <h3 style="font-size:15px;margin:20px 0 10px">รายการเข้า-ออก</h3>
     <div class="tablewrap cards-on-mobile"><table><thead><tr><th>วันที่</th><th>เลขที่</th><th>รายการ</th><th>อ้างอิง</th><th class="r">เข้า</th><th class="r">ออก</th><th class="r">คงเหลือ</th></tr></thead><tbody>
       ${rows.map((e) => `<tr ${e.ref && doc(e.ref) ? `class="click" data-act="openDoc" data-v="${esc(e.ref)}"` : ''}><td>${dt(e.date)}</td><td class="num">${esc(e.no)}</td><td>${esc(e.note)}${e.adjust ? ' <span class="pill p-pending">ปรับยอดตรวจนับ</span>' : ''}<br><small style="color:var(--sub)">${esc(e.byName || '')}</small></td><td>${ref(e.ref)}</td><td class="r num in">${e.kind === 'in' ? fmt(e.amount) : ''}</td><td class="r num out">${e.kind === 'out' ? fmt(e.amount) : ''}</td><td class="r num">${fmt(e.after)}</td></tr>`).join('') || '<tr><td colspan="7" class="empty">ยังไม่มีรายการ</td></tr>'}
@@ -1228,7 +1231,7 @@ async function voucherPrint(no) {
   const p2 = `<div class="a4">${head('รายละเอียดค่าใช้จ่ายจริง')}<div class="item"><h4>${d.no} · ${esc(d.title)}<span>${fmt(used)} บาท</span></h4>${trv ? `<div class="jobh"><span><span class="k">ชื่องาน :</span> <b>${esc(d.title)}</b></span><span><span class="k">ระหว่างวันที่</span> <b>${dRangeF(d.go, d.back)}</b></span></div>` : ''}${att}<div class="xtot"><span>รวมใช้จริง</span><b>${fmt(used)} บาท</b></div><div class="xwords">(${bahtText(used)})</div></div><div class="pfoot" style="margin-top:auto"><span>${vno} · เอกสารแนบ</span><span>หน้า 2/2</span></div></div>`;
   let pv = $('#printv'); if (!pv) { pv = document.createElement('div'); pv.id = 'printv'; pv.className = 'printv'; document.body.appendChild(pv); }
   pv.innerHTML = `<div class="pbar"><b>${vno}</b><small>${T.title} · A4 2 หน้า</small><span style="margin-left:auto;display:flex;gap:8px"><button class="btn pri sm" data-act="doPrint">${ms('print')}พิมพ์ / บันทึก PDF</button><button class="btn sm" data-act="closePrint">${ms('close')}ปิด</button></span></div><div class="pages">${p1}${p2}</div>`;
-  pv.classList.add('on'); drawDoc(no);
+  pv.classList.add('on'); fitPrint(); drawDoc(no);
 }
 
 // ---------- รายงาน ----------
