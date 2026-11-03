@@ -277,7 +277,7 @@ function vSettings() {
 }
 
 function vGeneral() {
-  const S = ST.settings; if (!ST.draft) ST.draft = JSON.parse(JSON.stringify({ settings: S.settings, cats: S.cats, customers: S.customers, home: S.home, defaults: S.defaults }));
+  const S = ST.settings; if (!ST.draft) ST.draft = JSON.parse(JSON.stringify({ settings: S.settings, cats: S.cats, customers: S.customers, home: S.home, defaults: S.defaults, vehicles: S.vehicles || [] }));
   const D = ST.draft, s = D.settings;
   const f = (k, lab, hint) => `<div class="field"><label for="s-${k}">${lab}</label><input class="inp num" type="number" inputmode="decimal" id="s-${k}" data-set="${k}" value="${esc(s[k])}">${hint ? `<span class="hint">${hint}</span>` : ''}</div>`;
   const roleSel = (k) => `<select class="sel" id="df-${k}" data-def="${k}">${['user', 'ceo', 'none'].map((r) => `<option value="${r}" ${D.defaults[k] === r ? 'selected' : ''}>${ROLE_LABEL[r]}</option>`).join('')}</select>`;
@@ -294,6 +294,7 @@ function vGeneral() {
         ${f('evFreeKm', 'แนะนำ "ไม่เบิก" เมื่อรถไฟฟ้าวิ่งไม่เกิน (กม.)', 'ใส่ 0 = ไม่แนะนำ · ผู้ขอเปลี่ยนเองได้')}<div class="fsub full">${ms('payments')}เบี้ยเลี้ยง · ที่พัก · เงินสดย่อย</div>
         ${f('allowance', 'เบี้ยเลี้ยง (บาท/คน/วัน)')}${f('hotel', 'ที่พัก (บาท/ห้อง/คืน)', 'ขอเกินได้รายทริป · Admin อนุมัติ')}
         ${f('hotelWarn', 'เตือนที่พักเกิน (บาท/ห้อง/คืน)', 'เกินยอดนี้ขึ้นสีแดง')}${f('lowAlert', 'เตือนเงินสดย่อยต่ำกว่า (บาท)')}</div></div>
+      ${vehCard(D)}
       <div class="card"><h3>${ms('alarm')}กำหนดเคลียร์เงิน (นับจากวันจบทริป)</h3><div class="fgrid">
         ${f('clearDue', 'ครบกำหนด (วัน)', 'เตือนผู้เดินทาง')}${f('clearWarn', 'เตือนซ้ำ (วัน)', 'ขึ้นในรายการใกล้เกินกำหนด')}${f('clearMax', 'เกินกำหนด (วัน)', 'ป้ายแดง · แจ้ง Admin')}</div></div>
       <div class="card"><h3>${ms('category')}หมวดค่าใช้จ่าย<span class="r">${D.cats.length}</span></h3>
@@ -542,6 +543,34 @@ function vClearList() {
 // ----- ค่ารถ: รถน้ำมัน / รถไฟฟ้า / ไม่เบิก -----
 const CAR = { fuel: ['local_gas_station', 'รถน้ำมัน', 'คิดตามระยะ'], ev: ['ev_station', 'รถไฟฟ้า', 'คิดค่าชาร์จ'], none: ['money_off', 'ไม่เบิก', 'ค่าน้ำมัน/ชาร์จ'] };
 const CAR_WHY = ['รถไฟฟ้า วิ่งใกล้ ไม่ต้องชาร์จ', 'ชาร์จ/เติมที่บริษัทแล้ว', 'ไปกับรถคนอื่น/รถลูกค้า'];
+const VEH_NONE_WHY = 'ไปกับรถคนอื่น/รถลูกค้า';
+const p0Of = (d) => d.plan || {};
+function vehOfPlan(p) { const v = p.veh; if (!v) return { mode: '', id: '', plate: '', prov: '' }; return { mode: v.mode, id: v.id || '', plate: v.plate || '', prov: v.prov || '' }; }
+function vehHtml(p) {
+  const v = p.veh; if (!v) return '';
+  if (v.mode === 'none') return 'ไม่ได้ใช้รถของเรา (ไปกับรถคนอื่น/รถลูกค้า)';
+  const t = v.type || (p.car === 'ev' ? 'ev' : p.car === 'fuel' ? 'fuel' : '');
+  return `<span class="plate">${esc(v.plate)}</span> ${esc(v.prov || '')}${v.name ? ` · ${esc(v.name)}` : v.mode === 'own' ? ' · รถอื่น/รถส่วนตัว' : ''}${t ? ` · ${t === 'ev' ? 'รถไฟฟ้า' : 'รถน้ำมัน'}` : ''}`;
+}
+const vehTextPlain = (p) => { const v = p.veh; if (!v) return ''; if (v.mode === 'none') return 'ไม่ได้ใช้รถของเรา (ไปกับรถคนอื่น/รถลูกค้า)'; return `${p.car === 'ev' || v.type === 'ev' ? 'รถไฟฟ้า' : 'รถน้ำมัน'} · ทะเบียน ${v.plate}${v.prov ? ' ' + v.prov : ''}${v.name ? ` (${v.name})` : v.mode === 'own' ? ' (รถอื่น/รถส่วนตัว)' : ''}`; };
+function vehBox(f) {
+  const X = !!f.extNo, V = (ST.settings.vehicles || []), v = f.veh || { mode: '' };
+  const cur = v.mode === 'co' ? `co:${v.id}` : v.mode;
+  const opts = `<option value="">— เลือกรถ —</option>${V.length ? `<optgroup label="รถของบริษัท">${V.map((x) => `<option value="co:${esc(x.id)}" ${cur === 'co:' + x.id ? 'selected' : ''}>${esc(x.plate)} ${esc(x.prov || '')}${x.name ? ' · ' + esc(x.name) : ''} · ${x.car === 'ev' ? 'รถไฟฟ้า' : 'รถน้ำมัน'}</option>`).join('')}</optgroup>` : ''}
+    ${v.mode === 'co' && !V.some((x) => x.id === v.id) ? `<option value="co:${esc(v.id)}" selected>${esc(v.plate)} (ลบจากตั้งค่าแล้ว)</option>` : ''}
+    <option value="own" ${cur === 'own' ? 'selected' : ''}>รถอื่น / รถส่วนตัว (พิมพ์ทะเบียน)</option><option value="none" ${cur === 'none' ? 'selected' : ''}>ไม่ได้ใช้รถของเรา (ไปกับรถคนอื่น/รถลูกค้า)</option>`;
+  const own = v.mode === 'own' ? `<div class="vown"><div class="field"><label for="f-vplate">ทะเบียน</label><input class="inp" id="f-vplate" data-vf="plate" maxlength="20" value="${esc(v.plate)}" placeholder="เช่น 3ขค 4455" ${X ? 'readonly' : ''}></div><div class="field"><label for="f-vprov">จังหวัด</label><input class="inp" id="f-vprov" data-vf="prov" maxlength="40" value="${esc(v.prov)}" placeholder="เช่น ชัยนาท" ${X ? 'readonly' : ''}></div></div>` : '';
+  return `<div class="field full" id="vehField"><label for="f-veh">รถที่ใช้${X ? ' (ตามใบเดิม)' : ''}</label><select class="sel" id="f-veh" ${X ? 'disabled' : ''}>${opts}</select>${!V.length && isAdmin() ? `<span class="hint">ยังไม่มีรถของบริษัท · เพิ่มได้ที่ ตั้งค่า → ค่าทั่วไป → รถของบริษัท</span>` : ''}${own}</div>`;
+}
+function vehCard(D) {
+  const L = D.vehicles || [];
+  const row = (x, i) => `<div class="vrow"><input class="inp" aria-label="ทะเบียน" placeholder="ทะเบียน เช่น 1กข 1234" data-veh="${i}" data-k="plate" value="${esc(x.plate)}"><input class="inp" aria-label="จังหวัด" placeholder="จังหวัด" data-veh="${i}" data-k="prov" value="${esc(x.prov)}">
+      <input class="inp" aria-label="รุ่น / ชื่อเรียก" placeholder="รุ่น เช่น MG4 สีขาว" data-veh="${i}" data-k="name" value="${esc(x.name)}"><select class="sel" aria-label="ประเภทรถ" data-veh="${i}" data-k="car"><option value="fuel" ${x.car !== 'ev' ? 'selected' : ''}>รถน้ำมัน</option><option value="ev" ${x.car === 'ev' ? 'selected' : ''}>รถไฟฟ้า</option></select>
+      <button class="btn sm ghost" data-act="vehDel" data-v="${i}" aria-label="ลบรถ ${esc(x.plate)}">${ms('delete')}</button></div>`;
+  return `<div class="card"><h3>${ms('garage')}รถของบริษัท<span class="r">${L.length} คัน</span></h3><p class="formula" style="margin:0 0 8px">ผู้ขอเลือกทะเบียนจากรายการนี้ · ระบบตั้งรถน้ำมัน/รถไฟฟ้าให้ตามประเภท</p>
+    <div class="vlist">${L.map(row).join('') || '<div class="empty" style="padding:10px">ยังไม่มีรถ</div>'}</div><button class="btn sm" style="margin-top:8px" data-act="vehAdd">${ms('add')}เพิ่มรถ</button></div>`;
+}
+
 function carText(p, s) {
   const car = p.car || 'fuel';
   if (car === 'none') return ['ค่าน้ำมัน/ค่าชาร์จ', `ไม่เบิก${p.carWhy ? ` · ${esc(p.carWhy)}` : ''}`];
@@ -551,21 +580,23 @@ function carText(p, s) {
 const carRow = (p, s) => { const c = carText(p, s); return `<div><span>${c[0]}<br><span class="f">${c[1]}</span></span><b class="${(p.car || 'fuel') === 'none' ? 'zero' : ''}">${fmt(p.fuel)}</b></div>`; };
 function carBox(f, k) {
   const car = f.car || 'fuel', X = !!f.extNo, s = set();
-  const seg = Object.entries(CAR).map(([key, [ic, l, sub]]) => `<button type="button" class="${car === key ? 'on' : ''}" data-act="carSet" data-v="${key}" aria-pressed="${car === key}" ${X ? 'disabled' : ''}>${ms(ic)}<b>${l}</b><small>${sub}</small></button>`).join('');
+  const vm = (f.veh || {}).mode, vco = vm === 'co' ? ((ST.settings.vehicles || []).find((x) => x.id === f.veh.id) || {}).car || null : null;
+  const lockCar = (key) => (vm === 'none' && key !== 'none') || (vco && key !== 'none' && key !== vco);
+  const seg = Object.entries(CAR).map(([key, [ic, l, sub]]) => `<button type="button" class="${car === key ? 'on' : ''}" data-act="carSet" data-v="${key}" aria-pressed="${car === key}" ${X || lockCar(key) ? 'disabled' : ''}>${ms(ic)}<b>${l}</b><small>${sub}</small></button>`).join('');
   const why = car === 'none' ? `<div class="field" style="margin-top:10px"><label for="f-carwhy">เหตุผลที่ไม่เบิก</label><div class="cwhy">${CAR_WHY.map((w) => `<button type="button" class="${f.carWhy === w ? 'on' : ''}" data-act="carWhy" data-v="${esc(w)}" ${X ? 'disabled' : ''}>${f.carWhy === w ? ms('check', 'style="font-size:16px"') : ''}${esc(w)}</button>`).join('')}</div>
       <input class="inp" id="f-carwhy" data-f="carWhy" maxlength="120" value="${esc(f.carWhy)}" placeholder="หรือพิมพ์เหตุผลเอง" style="margin-top:6px" ${X ? 'readonly' : ''}></div>
       <p class="formula" style="margin:6px 0 0">${ms('route', 'style="font-size:15px;vertical-align:-3px"')} ยังบันทึกระยะ ${fmt(k.km)} กม. ไว้ในรายงาน · ถ้าระหว่างทางต้องชาร์จ/เติมจริง ใส่ยอดตอนเคลียร์ได้</p>` : '';
   const ev = car === 'ev' ? `<div class="field" style="margin-top:10px;max-width:220px"><label for="f-pev">ค่าไฟชาร์จ (บาท/kWh)</label><input class="inp num" type="number" inputmode="decimal" id="f-pev" data-f="priceEv" value="${esc(f.priceEv)}" ${X ? 'readonly' : ''}></div>
       <p class="formula" style="margin:6px 0 0">${fmt(k.km)} กม. ÷ ${s.kmPerKwh || 6} กม./kWh × ${k.price} บาท = <b>${fmt(k.fuel)}</b> บาท · ตอนเคลียร์ใส่ค่าชาร์จจริงตามใบเสร็จ/สลิปแอปชาร์จ</p>` : '';
   const hint = f.evHint ? `<div class="banner info" style="margin-top:10px">${ms('lightbulb')}<span>${esc(f.evHint)}</span></div>` : '';
-  return `<div class="field full" id="carField"><label>ค่ารถ${X ? ' (ตามใบเดิม)' : ''}</label><div class="carseg" role="group" aria-label="ค่ารถ">${seg}</div>${hint}${why}${ev}</div>`;
+  return `${vehBox(f)}<div class="field full" id="carField"><label>ค่ารถ${X ? ' (ตามใบเดิม)' : ''}</label><div class="carseg" role="group" aria-label="ค่ารถ">${seg}</div>${hint}${why}${ev}</div>`;
 }
 
 function newForm(d) {
   const s = set();
-  if (d) return { editNo: d.no, staffId: d.staffId, travelerIds: d.travelers.map((t) => t.id).filter((x) => x !== d.staffId), title: d.title, go: d.go, back: d.back, stops: [...d.stops], geo: [...(d.geo || d.stops.map(() => null))], kmManual: !!d.kmReason || d.kmCalc == null, km: d.plan.km, kmReason: d.kmReason || '', kmCalc: d.kmCalc, kmWhy: '', rooms: d.plan.rooms, hotelOver: !!d.plan.hotelOver, hotelRate: d.plan.hotelRate || '', hotelReason: d.plan.hotelReason || '', extras: (d.plan.extras || []).map((e) => ({ ...e })), car: d.plan.car || 'fuel', carWhy: d.plan.carWhy || '', price: d.plan.car === 'ev' || d.plan.car === 'none' ? s.fuelPrice : d.plan.price, priceEv: d.plan.car === 'ev' ? d.plan.price : (s.evPrice || 8), evAsked: true };
+  if (d) return { editNo: d.no, staffId: d.staffId, travelerIds: d.travelers.map((t) => t.id).filter((x) => x !== d.staffId), title: d.title, go: d.go, back: d.back, stops: [...d.stops], geo: [...(d.geo || d.stops.map(() => null))], kmManual: !!d.kmReason || d.kmCalc == null, km: d.plan.km, kmReason: d.kmReason || '', kmCalc: d.kmCalc, kmWhy: '', rooms: d.plan.rooms, hotelOver: !!d.plan.hotelOver, hotelRate: d.plan.hotelRate || '', hotelReason: d.plan.hotelReason || '', extras: (d.plan.extras || []).map((e) => ({ ...e })), car: d.plan.car || 'fuel', carWhy: d.plan.carWhy || '', veh: vehOfPlan(d.plan), price: d.plan.car === 'ev' || d.plan.car === 'none' ? s.fuelPrice : d.plan.price, priceEv: d.plan.car === 'ev' ? d.plan.price : (s.evPrice || 8), evAsked: true };
   const t = todayTH();
-  return { staffId: ST.me.id, travelerIds: [], title: '', go: addDays(t, 1), back: addDays(t, 2), stops: [''], geo: [null], kmManual: false, km: '', kmReason: '', kmCalc: null, kmWhy: '', rooms: 1, hotelOver: false, hotelRate: '', hotelReason: '', extras: [], car: 'fuel', carWhy: '', price: s.fuelPrice, priceEv: s.evPrice || 8, evAsked: false };
+  return { staffId: ST.me.id, travelerIds: [], title: '', go: addDays(t, 1), back: addDays(t, 2), stops: [''], geo: [null], kmManual: false, km: '', kmReason: '', kmCalc: null, kmWhy: '', rooms: 1, hotelOver: false, hotelRate: '', hotelReason: '', extras: [], car: 'fuel', carWhy: '', veh: { mode: '', id: '', plate: '', prov: '' }, price: s.fuelPrice, priceEv: s.evPrice || 8, evAsked: false };
 }
 function calcForm(f) {
   const s = set(), ddays = f.go && f.back && f.back >= f.go ? dayDiff(f.go, f.back) + 1 : 1, nights = Math.max(0, ddays - 1), people = 1 + f.travelerIds.filter((x) => x !== f.staffId).length;
@@ -689,7 +720,7 @@ function drawDoc(no) {
       ${d.returnNote && d.status === 'returned' ? `<div class="banner warn">${ms('edit_note')}<span>ส่งกลับให้แก้: <b>${esc(d.returnNote)}</b></span></div>` : ''}
       ${d.rejectNote && d.status === 'rejected' ? `<div class="banner bad">${ms('block')}<span>${d.cancelled ? 'ยกเลิก' : 'ไม่อนุมัติ'}: <b>${esc(d.rejectNote)}</b></span></div>` : ''}
       ${d.clearReturn && d.status === 'open' ? `<div class="banner warn">${ms('edit_note')}<span>ส่งเคลียร์กลับให้แก้: <b>${esc(d.clearReturn)}</b></span></div>` : ''}
-      <div class="card"><b style="font-size:16px">${esc(d.title)}</b><dl class="kv" style="margin-top:8px"><dt>ผู้รับเงิน</dt><dd>${esc(d.staffName)}</dd><dt>ผู้เดินทาง</dt><dd>${d.travelers.map((t) => esc(t.name)).join(', ')}</dd><dt>วันที่</dt><dd>${dRange(d.go, d.back)} (${p.days} วัน ${p.nights} คืน)</dd><dt>สถานที่</dt><dd>${d.stops.length} แห่ง · ${fmt(p.km)} กม. ไป-กลับ</dd><dt>จ่ายโดย</dt><dd>${d.paidFrom === 'PC' ? 'เงินสดย่อย' : d.paidFrom === 'BANK' ? 'โอนเข้าบัญชี' : '—'}</dd></dl>${pay}</div>
+      <div class="card"><b style="font-size:16px">${esc(d.title)}</b><dl class="kv" style="margin-top:8px"><dt>ผู้รับเงิน</dt><dd>${esc(d.staffName)}</dd><dt>ผู้เดินทาง</dt><dd>${d.travelers.map((t) => esc(t.name)).join(', ')}</dd><dt>วันที่</dt><dd>${dRange(d.go, d.back)} (${p.days} วัน ${p.nights} คืน)</dd>${p.veh ? `<dt>รถที่ใช้</dt><dd>${vehHtml(p)}</dd>` : ''}<dt>สถานที่</dt><dd>${d.stops.length} แห่ง · ${fmt(p.km)} กม. ไป-กลับ</dd><dt>จ่ายโดย</dt><dd>${d.paidFrom === 'PC' ? 'เงินสดย่อย' : d.paidFrom === 'BANK' ? 'โอนเข้าบัญชี' : '—'}</dd></dl>${pay}</div>
       ${extCards(d)}${voucherBtn(d)}
       ${routeCard(d, mapBtn)}${km}<div class="card"><h3>${ms('calculate')}ยอดที่ขอเบิก</h3>${lines}</div>${actual}
       <div class="card"><h3>${ms('history')}ความเคลื่อนไหว</h3><ul class="tl">${d.timeline.map((t) => `<li>${esc(t.text)}${t.amt != null ? ` · <b class="num">${fmt(t.amt)}</b>` : ''}<small>${dtTime(t.at)} · ${esc(t.byName)}</small></li>`).join('')}</ul></div>
@@ -846,11 +877,11 @@ function detailOf(x, d, pcr, idx) {
   if (!d) return `<div class="item">${head()}<div class="xnote">${esc(x.title)}</div>${sum(x.amount)}</div>`;
   const pay = `<div class="xnote">โอนให้: ${esc(x.payee)}${x.external ? ' · ตามใบแจ้งหนี้' : x.bank ? ` · ${esc(x.bank.bank)} ${esc(x.bank.no)}` : ''}</div>`;
   if (x.kind === 'ext') { const e = (d.ext || [])[d.ext.length - 1] || {}, df = e.diff || {};
-    return `<div class="item">${head()}${pay}${kv([['ชื่องาน', `<b>${esc(d.title)}</b>`], ['วันที่ (ทริปใหม่)', `${thDate(d.go)}${d.back !== d.go ? ' – ' + thDate(d.back) : ''}${df.newBack !== df.oldBack ? ` <small>(เดิมกลับ ${thDate(df.oldBack)})</small>` : ''}`], ['เส้นทางการเดินทาง', route(d.stops)], ['ชื่อผู้เดินทาง', people(d)], (df.added || []).length ? ['สถานที่ที่เพิ่ม', df.added.map(esc).join(', ')] : null, e.note ? ['เหตุผลที่ต่อทริป', esc(e.note)] : null])}
+    return `<div class="item">${head()}${pay}${kv([['ชื่องาน', `<b>${esc(d.title)}</b>`], ['วันที่ (ทริปใหม่)', `${thDate(d.go)}${d.back !== d.go ? ' – ' + thDate(d.back) : ''}${df.newBack !== df.oldBack ? ` <small>(เดิมกลับ ${thDate(df.oldBack)})</small>` : ''}`], ['เส้นทางการเดินทาง', route(d.stops)], ['ชื่อผู้เดินทาง', people(d)], (d.plan || p0Of(d)).veh ? ['ยานพาหนะ', esc(vehTextPlain(d.plan))] : null, (df.added || []).length ? ['สถานที่ที่เพิ่ม', df.added.map(esc).join(', ')] : null, e.note ? ['เหตุผลที่ต่อทริป', esc(e.note)] : null])}
       ${df.fuel ? row(`${carText(d.plan, set())[0]}เพิ่ม`, `${fmt(df.km)} กม.`, df.fuel) : ''}${df.allowance ? row('ค่าเบี้ยเลี้ยงเพิ่ม', '', df.allowance) : ''}${df.hotel ? row('ค่าที่พักเพิ่ม', '', df.hotel) : ''}${(df.extras || []).map((z) => row(esc(z.cat), esc(z.desc), z.amount)).join('')}${sum(x.amount)}</div>`; }
   if (x.kind === 'topup') return `<div class="item">${head()}${pay}${kv([['ชื่องาน', `<b>${esc(d.title)}</b>`], d.type === 'TRV' ? ['วันที่', `${thDate(d.go)}${d.back !== d.go ? ' – ' + thDate(d.back) : ''}`] : null])}${row('', 'ใช้จริงตามใบเสร็จ', d.actual ? d.actual.total : 0)}${row('', 'หัก เงินที่จ่ายไปแล้ว', -d.requested)}${sum(x.amount)}</div>`;
   if (d.type === 'TRV') { const p = d.plan, s = set();
-    return `<div class="item">${head()}${pay}${kv([['ชื่องาน', `<b>${esc(d.title)}</b>`], ['วันที่', `${thDate(d.go)}${d.back !== d.go ? ' – ' + thDate(d.back) : ''} (${p.days} วัน ${p.nights} คืน)`], ['เส้นทางการเดินทาง', route(d.stops)], ['ชื่อผู้เดินทาง', people(d)], d.kmReason ? ['หมายเหตุระยะทาง', esc(d.kmReason)] : null])}
+    return `<div class="item">${head()}${pay}${kv([['ชื่องาน', `<b>${esc(d.title)}</b>`], ['วันที่', `${thDate(d.go)}${d.back !== d.go ? ' – ' + thDate(d.back) : ''} (${p.days} วัน ${p.nights} คืน)`], ['เส้นทางการเดินทาง', route(d.stops)], ['ชื่อผู้เดินทาง', people(d)], (d.plan || p0Of(d)).veh ? ['ยานพาหนะ', esc(vehTextPlain(d.plan))] : null, d.kmReason ? ['หมายเหตุระยะทาง', esc(d.kmReason)] : null])}
       ${(() => { const c = carText(p, s); return row(c[0], c[1], p.fuel); })()}${row('ค่าเบี้ยเลี้ยง', `${p.people} คน × ${p.days} วัน × ${fmt(s.allowance)}`, p.allowance)}
       ${p.nights ? row('ค่าที่พัก', `${p.nights} คืน × ${p.rooms} ห้อง × ${fmt(p.rate)}${p.hotelOver ? ` <span class="cat">(เกินอัตรา ${fmt(s.hotel)})</span>` : ''}`, p.hotel, p.hotelOver && p.hotelReason ? `เหตุผล: ${esc(p.hotelReason)}` : '') : ''}
       ${(p.extras || []).map((e) => row(esc(e.cat), esc(e.desc), e.amount)).join('')}${sum(x.amount)}</div>`; }
@@ -1199,6 +1230,12 @@ function buildReportWb(ExcelJS, D) {
   ws = xSheet(wb, 'ตามลูกค้า', [{ w: 34 }, { w: 10 }, { w: 16 }, { w: 22 }]);
   r = xHead(ws, 'ค่าใช้จ่ายตามลูกค้า / สถานที่', CO, `${meta} · ทริปหลายที่หารเท่ากันตามจำนวนสถานที่`, 4);
   xTable(ws, r, [{ h: 'ลูกค้า / สถานที่', k: 0 }, { h: 'ครั้ง', v: (x) => x[1].n, num: 1, int: 1, sum: 1 }, { h: 'ค่าใช้จ่าย (บาท)', v: (x) => Math.round(x[1].amt * 100) / 100, num: 1, sum: 1 }], D.byCust, { total: 1, bar: 3, printTitle: 1 });
+  // รถ
+  if (D.byVeh) {
+    ws = xSheet(wb, 'ตามรถ', [{ w: 26 }, { w: 22 }, { w: 10 }, { w: 12 }, { w: 18 }]);
+    r = xHead(ws, 'ทริปและระยะทางตามรถ', CO, `${meta} · นับทริปที่อนุมัติแล้วตามวันไป · ค่าน้ำมัน/ชาร์จ = ตามจริงถ้าเคลียร์แล้ว`, 5);
+    xTable(ws, r, [{ h: 'รถ (ทะเบียน)', k: 'label' }, { h: 'รุ่น / หมายเหตุ', k: 'name' }, { h: 'ทริป', k: 'trips', num: 1, int: 1, sum: 1 }, { h: 'กม.', k: 'km', num: 1, int: 1, sum: 1 }, { h: 'ค่าน้ำมัน/ชาร์จ (บาท)', k: 'amt', num: 1, sum: 1 }], D.byVeh, { total: 1, bar: 4, printTitle: 1 });
+  }
   // รายการ
   ws = xSheet(wb, 'รายการ', [{ w: 13 }, { w: 15 }, { w: 18 }, { w: 46 }, { w: 15 }, { w: 14 }, { w: 15 }], { landscape: 1, tab: XC.G2 });
   r = xHead(ws, `รายการค่าใช้จ่าย ${D.period}`, CO, meta, 7);
@@ -1293,6 +1330,7 @@ function vReport() {
       <div class="card"><h3>${ms('category')}ตามหมวด<span class="r">รวม ${fmt(R.total)} บาท</span></h3>${hb(R.byCat)}</div>
       <div class="card"><h3>${ms('receipt_long')}ตามประเภทใบ</h3>${hb(Object.entries(R.byType).filter(([, v]) => v).map(([k, v]) => [`${k} · ${TYPE_LABEL[k] || 'อื่นๆ'}`, v]).sort((a, b) => b[1] - a[1]))}</div>
       <div class="tablewrap"><table><thead><tr><th>ทีมงาน</th><th class="r">ใบ</th><th class="r">ทริป</th><th class="r">วันเดินทาง</th><th class="r">ค่าใช้จ่าย</th></tr></thead><tbody>${R.byStaff.map((o) => `<tr><td>${esc(o.name)}</td><td class="r num">${o.n}</td><td class="r num">${o.trips}</td><td class="r num">${o.days}</td><td class="r num">${fmt(o.amt)}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">ไม่มีข้อมูล</td></tr>'}</tbody></table></div>
+      <div class="tablewrap"><table><thead><tr><th>รถ (ทะเบียน)</th><th class="r">ทริป</th><th class="r">กม.</th><th class="r">ค่าน้ำมัน/ชาร์จ</th></tr></thead><tbody>${R.byVeh.map((o) => `<tr><td>${esc(o.label)}${o.name ? `<br><small style="color:var(--sub)">${esc(o.name)}</small>` : ''}</td><td class="r num">${o.trips}</td><td class="r num">${fmt(Math.round(o.km))}</td><td class="r num">${fmt(o.amt)}</td></tr>`).join('') || '<tr><td colspan="4" class="empty">ไม่มีข้อมูล</td></tr>'}</tbody></table></div>
       <div class="tablewrap"><table><thead><tr><th>ลูกค้า / สถานที่</th><th class="r">ครั้ง</th><th class="r">ค่าใช้จ่าย</th></tr></thead><tbody>${R.byCust.map(([k, o]) => `<tr><td>${esc(k)}</td><td class="r num">${o.n}</td><td class="r num">${fmt(o.amt)}</td></tr>`).join('') || '<tr><td colspan="3" class="empty">ไม่มีข้อมูล</td></tr>'}</tbody></table></div>
     </div>
     <p class="formula" style="margin-top:10px">ตัวเลขมาจากสมุดค่าใช้จ่าย (ลงเมื่อปิดใบ/จ่ายแล้ว) · ค่าใช้จ่ายต่อลูกค้า: ทริปที่ไปหลายที่หารเท่ากันตามจำนวนสถานที่ · ใบที่ยังไม่ปิดยังไม่นับในยอด</p>`;
@@ -1318,7 +1356,13 @@ function rptData() {
   const openD = ST.trv.list.filter((d) => !['closed', 'rejected'].includes(d.status) && inP(d.go));
   let trend = null, tmax = 0;
   if (F.p === 'y') { const m = Array(12).fill(0); (ST.ledger || []).forEach((e) => { if (String(e.date).slice(0, 4) === F.y) m[Number(String(e.date).slice(5, 7)) - 1] += e.amount; }); trend = m.map((v, i) => [i, v]); tmax = Math.max(...m); }
-  return { rows, total, byCat, byType, bySrc, byStaff, byCust, trips: tripDocs.length, km, openN: openD.length, openAmt: openD.reduce((t, d) => t + (d.requested || 0), 0), trend, tmax };
+  const vm = {};
+  ST.trv.list.filter((d) => (d.type || 'TRV') === 'TRV' && !d.cancelled && ['approve', 'open', 'clearSub', 'refund', 'topup', 'closed'].includes(d.status) && inP(d.go)).forEach((d) => {
+    const v = d.plan.veh, key = !v ? '~' : v.mode === 'none' ? '~none' : `${v.plate} ${v.prov || ''}`.trim();
+    const o = vm[key] || (vm[key] = { label: !v ? 'ไม่ระบุทะเบียน (ใบเก่า)' : v.mode === 'none' ? 'ไม่ได้ใช้รถของเรา' : key, name: v && v.mode !== 'none' ? (v.name || (v.mode === 'own' ? 'รถอื่น/รถส่วนตัว' : '')) : '', trips: 0, km: 0, amt: 0 });
+    o.trips++; o.km += d.plan.km || 0; o.amt += d.status === 'closed' && d.actual ? d.actual.fuel || 0 : d.plan.fuel || 0; });
+  const byVeh = Object.values(vm).sort((a, b) => b.km - a.km);
+  return { rows, total, byCat, byType, bySrc, byStaff, byCust, byVeh, trips: tripDocs.length, km, openN: openD.length, openAmt: openD.reduce((t, d) => t + (d.requested || 0), 0), trend, tmax };
 }
 async function rptXlsx() {
   const EX = await loadExcelJS(), R = rptData(), F = ST.rf;
@@ -1326,7 +1370,7 @@ async function rptXlsx() {
   const D = { period, by: ST.me.name, total: R.total, rows: R.rows,
     kpis: [{ l: 'ค่าใช้จ่ายรวม', v: R.total, m: `${R.rows.length} รายการในสมุด` }, { l: 'ค่าเดินทาง (TRV)', v: R.byType.TRV || 0, m: `${R.trips} ทริป · ${fmt(R.km)} กม.` }, { l: 'จ่ายจากเงินสดย่อย', v: R.bySrc.PC || 0, m: `โอน ${fmt(R.bySrc.BANK || 0)}` }, { l: 'ใบที่ยังไม่ปิด', v: R.openN, int: 1, m: R.openAmt ? `ยอดเบิกค้าง ${fmt(R.openAmt)}` : 'ไม่มีค้าง', tone: R.openN ? 'FFB83A30' : undefined }],
     byCat: R.byCat, byType: Object.entries(R.byType).filter(([, v]) => v).map(([k, v]) => [`${k} · ${TYPE_LABEL[k] || 'อื่นๆ'}`, v]).sort((a, b) => b[1] - a[1]),
-    byStaff: R.byStaff.map((o) => ({ ...o, amt: Math.round(o.amt * 100) / 100 })), byCust: R.byCust, trend: R.trend ? R.trend.map(([m, v]) => [MON[m], v]) : null };
+    byStaff: R.byStaff.map((o) => ({ ...o, amt: Math.round(o.amt * 100) / 100 })), byCust: R.byCust, byVeh: R.byVeh.map((o) => ({ ...o, km: Math.round(o.km), amt: Math.round(o.amt * 100) / 100 })), trend: R.trend ? R.trend.map(([m, v]) => [MON[m], v]) : null };
   await saveWb(buildReportWb(EX, D), `C2-Pay-Report-${F.p === 'm' ? F.m : F.y}.xlsx`);
 }
 
@@ -1437,10 +1481,12 @@ document.addEventListener('click', async (e) => {
     if (a === 'catDel') { ST.draft.cats.splice(+v, 1); render(); return; }
     if (a === 'custAdd') { ST.draft.customers.push({ name: '', lat: null, lng: null }); render(); const ins = document.querySelectorAll('[data-cust][data-k="name"]'); ins[ins.length - 1]?.focus(); return; }
     if (a === 'custDel') { ST.draft.customers.splice(+v, 1); render(); return; }
+    if (a === 'vehAdd') { (ST.draft.vehicles = ST.draft.vehicles || []).push({ id: '', plate: '', prov: '', name: '', car: 'fuel' }); render(); const ins = document.querySelectorAll('[data-veh][data-k="plate"]'); ins[ins.length - 1]?.focus(); return; }
+    if (a === 'vehDel') { ST.draft.vehicles.splice(+v, 1); render(); return; }
     if (a === 'resetDraft') { ST.draft = null; render(); return; }
     if (a === 'saveSettings') return busy(b, async () => {
       const D = ST.draft;
-      await api('saveSettings', { settings: D.settings, cats: D.cats, customers: D.customers.filter((c) => c.name.trim()), home: D.home, defaults: D.defaults, ...(D.orsKey ? { orsKey: D.orsKey.trim() } : {}), ...(D.gmapsKey ? { gmapsKey: D.gmapsKey.trim() } : {}) });
+      await api('saveSettings', { settings: D.settings, cats: D.cats, customers: D.customers.filter((c) => c.name.trim()), vehicles: (D.vehicles || []).filter((v) => String(v.plate || '').trim()), home: D.home, defaults: D.defaults, ...(D.orsKey ? { orsKey: D.orsKey.trim() } : {}), ...(D.gmapsKey ? { gmapsKey: D.gmapsKey.trim() } : {}) });
       await reloadMe(); ST.draft = null; ST.gmu = null; render(); toast('บันทึกค่าทั่วไปแล้ว');
     });
     if (a === 'bankEdit') { ST.bankEdit = v; render(); $('#bk-no, #bk-co')?.focus(); return; }
@@ -1643,6 +1689,8 @@ async function trvClick(a, v, b) {
     if (!(k.km > 0)) chk.push([$('#f-km') || '#f-stop-0', 'ระยะทาง', () => 'ใส่ระยะทางไป-กลับ']);
     if (f.kmManual && f.kmCalc != null && f.kmSrc !== 'est' && Math.abs(k.km - f.kmCalc) >= 0.5) chk.push(['#f-kmr', 'เหตุผลที่แก้ระยะทาง']);
     if (f.hotelOver && k.nights) chk.push(['#f-hr', 'ราคาที่พักต่อคืน', vMoney], ['#f-hre', 'เหตุผลที่พักเกินอัตรา']);
+    if (!f.extNo) chk.push(['#f-veh', 'รถที่ใช้']);
+    if (!f.extNo && f.veh && f.veh.mode === 'own') chk.push(['#f-vplate', 'ทะเบียนรถ']);
     if (!f.extNo && f.car === 'none') chk.push(['#f-carwhy', 'เหตุผลที่ไม่เบิกค่าน้ำมัน/ค่าชาร์จ']);
     if (!f.extNo && f.car === 'ev') chk.push(['#f-pev', 'ค่าไฟชาร์จ (บาท/kWh)', (x) => Number(x) > 0 && Number(x) <= 50 ? '' : 'ใส่ค่าไฟต่อหน่วย 0.5–50 บาท']);
     f.extras.forEach((x, i) => { if (x.desc.trim() || x.amount !== '') chk.push([`#f-exd-${i}`, `รายการค่าใช้จ่ายอื่น ${i + 1}`], [`#f-exa-${i}`, `ยอดค่าใช้จ่ายอื่น ${i + 1}`, vMoney]); });
@@ -1657,7 +1705,7 @@ async function trvClick(a, v, b) {
       return true;
     }
     await busy(b, async () => {
-      const form = { editNo: f.editNo, staffId: f.staffId, travelerIds: f.travelerIds, title: f.title, go: f.go, back: f.back, stops: f.stops.map((x) => x.trim()).filter(Boolean), geo: f.stops.map((x, i) => (x.trim() ? f.geo[i] || null : undefined)).filter((g) => g !== undefined), km: k.km, kmReason: f.kmManual || f.kmCalc == null ? f.kmReason : '', rooms: f.rooms, hotelOver: f.hotelOver, hotelRate: f.hotelRate, hotelReason: f.hotelReason, extras: f.extras, car: f.car || 'fuel', carWhy: f.car === 'none' ? f.carWhy : '', price: f.car === 'ev' ? f.priceEv : f.price };
+      const form = { editNo: f.editNo, staffId: f.staffId, travelerIds: f.travelerIds, title: f.title, go: f.go, back: f.back, stops: f.stops.map((x) => x.trim()).filter(Boolean), geo: f.stops.map((x, i) => (x.trim() ? f.geo[i] || null : undefined)).filter((g) => g !== undefined), km: k.km, kmReason: f.kmManual || f.kmCalc == null ? f.kmReason : '', rooms: f.rooms, hotelOver: f.hotelOver, hotelRate: f.hotelRate, hotelReason: f.hotelReason, extras: f.extras, car: f.car || 'fuel', carWhy: f.car === 'none' ? f.carWhy : '', price: f.car === 'ev' ? f.priceEv : f.price, veh: f.veh && f.veh.mode ? { mode: f.veh.mode, id: f.veh.id, plate: f.veh.plate, prov: f.veh.prov } : null };
       const r = await api('trvSubmit', { form }); ST.form = null; await reloadTrv();
       ST.view = isAdmin() ? 'inbox' : 'home'; render(); toast(form.editNo ? `บันทึก ${r.no} แล้ว` : `ส่งคำขอ ${r.no} แล้ว · รอ admin อนุมัติ`); if (isAdmin()) drawDoc(r.no);
     });
@@ -1828,6 +1876,7 @@ document.addEventListener('change', (e) => {
 document.addEventListener('input', (e) => {
   const el = e.target; if (!ST.draft) return;
   if (el.dataset.set) ST.draft.settings[el.dataset.set] = el.value === '' ? '' : Number(el.value);
+  else if (el.dataset.veh !== undefined && el.dataset.k) { ST.draft.vehicles[+el.dataset.veh][el.dataset.k] = el.value; }
   else if (el.dataset.cust !== undefined && el.dataset.k) { const c = ST.draft.customers[+el.dataset.cust]; c[el.dataset.k] = el.dataset.k === 'name' ? el.value : (el.value === '' ? null : Number(el.value)); }
   else if (el.dataset.home) ST.draft.home[el.dataset.home] = el.dataset.home === 'name' ? el.value : (el.value === '' ? null : Number(el.value));
   else if (el.dataset.def) ST.draft.defaults[el.dataset.def] = el.value;
@@ -2012,6 +2061,22 @@ async function tvRefresh() {
   }
   if (TV.mode) tvRender();
 }
+document.addEventListener('change', (e) => {
+  if (e.target.id !== 'f-veh' || !ST.form) return;
+  const f = ST.form, val = e.target.value, st = set(), sc = $('#view').scrollTop; f.evHint = '';
+  if (!val) f.veh = { mode: '', id: '', plate: '', prov: '' };
+  else if (val === 'own') { if (f.veh.mode === 'none') { f.car = 'fuel'; f.carWhy = ''; } f.veh = { mode: 'own', id: '', plate: f.veh.mode === 'own' ? f.veh.plate : '', prov: f.veh.mode === 'own' ? f.veh.prov : '' }; }
+  else if (val === 'none') { f.veh = { mode: 'none', id: '', plate: '', prov: '' }; f.car = 'none'; f.carWhy = VEH_NONE_WHY; }
+  else {
+    const id = val.slice(3), v = (st.vehicles || ST.settings.vehicles || []).find((x) => x.id === id) || {};
+    f.veh = { mode: 'co', id, plate: v.plate || '', prov: v.prov || '' };
+    const km = calcForm(f).km, free = Number(st.evFreeKm ?? 150);
+    if (v.car === 'ev' && free > 0 && km > 0 && km <= free) { f.car = 'none'; f.carWhy = CAR_WHY[0]; f.evAsked = true; f.evHint = `รถไฟฟ้า ระยะ ${fmt(km)} กม. ไม่เกิน ${fmt(free)} กม. ระบบเลือก "ไม่เบิก" ให้ก่อน · ถ้าต้องชาร์จข้างนอก กด "รถไฟฟ้า"`; }
+    else { f.car = v.car === 'ev' ? 'ev' : 'fuel'; if (f.carWhy === VEH_NONE_WHY) f.carWhy = ''; f.evAsked = true; }
+  }
+  render(); $('#view').scrollTop = sc;
+});
+document.addEventListener('input', (e) => { const k = e.target.dataset && e.target.dataset.vf; if (k && ST.form && ST.form.veh) ST.form.veh[k] = e.target.value; });
 document.addEventListener('visibilitychange', () => { if (!document.hidden && TV.mode && Date.now() - TV.at > TV_REFRESH_MS) tvRefresh(); });
 window.addEventListener('resize', () => { if (TV.mode) tvFit(); });
 function tvFit() {

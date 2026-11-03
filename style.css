@@ -776,3 +776,10 @@ html.tv-on, html.tv-on body { overflow: hidden; }
 .cwhy button.on { background: var(--good-bg); color: var(--good); border-color: transparent; font-weight: 600; }
 .lines b.zero { color: var(--sub); }
 .fsub { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; color: var(--sub); border-top: 1px dashed var(--line); padding-top: 8px; margin-top: 2px; } .fsub:first-child { border-top: 0; padding-top: 0; margin-top: 0; } .fsub .ms { font-size: 17px; color: var(--brand); }
+
+/* ===== ทะเบียนรถ ===== */
+.plate { font-family: var(--f-num); font-weight: 700; background: #fff; color: #201E1D; border: 1.5px solid #cfd8d3; border-radius: 5px; padding: 0 6px; font-size: .92em; white-space: nowrap; }
+.vown { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,140px); gap: 8px; margin-top: 8px; }
+.vlist { display: flex; flex-direction: column; gap: 8px; }
+.vrow { display: grid; grid-template-columns: minmax(0,1.1fr) minmax(0,.8fr) minmax(0,1.2fr) 110px auto; gap: 6px; align-items: center; }
+@container app (max-width: 760px) { .vrow { grid-template-columns: minmax(0,1fr) minmax(0,1fr) 40px; padding-bottom: 8px; border-bottom: 1px dashed var(--line); } .vrow > input[data-k="name"] { grid-column: 1; grid-row: 2; } .vrow > select { grid-column: 2 / 4; grid-row: 2; } .vrow > .btn { grid-column: 3; grid-row: 1; } }
