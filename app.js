@@ -218,7 +218,7 @@ function renderNav() {
   const bd = { inbox: L.filter((d) => d.status === 'submitted' || d.status === 'clearSub' || d.status === 'pending').length, clear: L.filter((d) => d.status === 'open').length, payq: L.filter((d) => !d.batch && (d.status === 'approve' || (d.status === 'topup' && d.settleSrc === 'BANK'))).length };
   const late = L.some((d) => ['late', 'warn'].includes((clearState(d) || {}).lv));
   const ceoN = ST.apv ? ST.apv.batches.filter((x) => x.status === 'ceo').length : 0;
-  const badge = (k) => k === 'ceoq' && isCeo() && ceoN ? `<span class="badge red">${ceoN}</span>` : isAdmin() && bd[k] ? `<span class="badge ${k === 'inbox' || (k === 'clear' && late) ? 'red' : ''}">${bd[k]}</span>` : k === 'settings' && ST.trialMode && isCust() ? '<span class="badge">ทดลอง</span>' : '';
+  const badge = (k) => k === 'more' && isAdmin() && bd.payq ? '<span class="badge"></span>' : k === 'ceoq' && isCeo() && ceoN ? `<span class="badge red">${ceoN}</span>` : isAdmin() && bd[k] ? `<span class="badge ${k === 'inbox' || (k === 'clear' && late) ? 'red' : ''}">${bd[k]}</span>` : k === 'settings' && ST.trialMode && isCust() ? '<span class="badge">ทดลอง</span>' : '';
   $('#sidenav').innerHTML = navAll().map(([k, i, l, soon]) => k === '#' ? `<div class="ngrp" role="presentation"><span>${i}</span></div>`
     : k[0] === '@' ? `<button class="newbtn fx-hover ${ST.view === k.slice(1) ? 'on' : ''}" data-act="go" data-v="${k.slice(1)}" title="${l}">${ms(i)}<span class="lbl">${l}</span></button>`
     : `<button class="nitem ${ST.view === k ? 'on' : ''} ${soon ? 'soon' : ''}" data-act="${k === 'tvView' ? 'tvView' : 'go'}" data-v="${k}" title="${l}${soon ? ' (เร็วๆ นี้)' : ''}">${ms(i)}<span class="lbl">${l}</span>${badge(k)}</button>`).join('');
@@ -250,8 +250,27 @@ function trialBanner() {
 
 // ===== views =====
 function vMore() {
-  const items = nav().filter(([k]) => !(isCeo() ? ['home', 'ceoq', 'claims', 'report'] : ['home', 'inbox', 'clear', 'new']).includes(k));
-  return `<div class="stack">${items.map(([k, i, l, soon]) => `<button class="card kpi" style="flex-direction:row;align-items:center;gap:12px" data-act="${k === 'tvView' ? 'tvView' : 'go'}" data-v="${k}">${ms(i)}<b style="font-weight:600">${l}</b>${soon ? '<span class="pill p-mute" style="margin-left:auto">เร็วๆ นี้</span>' : ''}</button>`).join('')}</div>`;
+  if (!ST.apv && (isAdmin() || isCeo())) loadApv();
+  const me = ST.me, L = (ST.trv && ST.trv.list) || [], A = ST.apv;
+  const waitN = L.filter((d) => !d.batch && (d.status === 'approve' || (d.status === 'topup' && d.settleSrc === 'BANK'))).length;
+  const ceoN = A ? A.batches.filter((b) => b.status === 'ceo').length : 0;
+  const mon = todayTH().slice(0, 7), paidM = A ? A.batches.filter((b) => b.status === 'paid' && String(b.paidAt || '').slice(0, 7) === mon).length : null;
+  const pcb = ST.trv && ST.trv.pcBalance != null ? `คงเหลือ <span class="num">${fmt(ST.trv.pcBalance)}</span>` : 'ยอดคงเหลือ · ตรวจนับ';
+  const pcLow = ST.trv && ST.settings && ST.trv.pcBalance < set().lowAlert;
+  const tile = (act, v, ic, l, sub, badge, tone) => `<button class="mtile" data-act="${act}" ${v ? `data-v="${v}"` : ''}><span class="mi ${tone || ''}">${ms(ic)}</span><b>${l}</b><small>${sub}</small>${badge ? `<span class="badge ${badge[1] || ''}">${badge[0]}</span>` : ''}</button>`;
+  const sec = (t, tiles) => `<div class="msec">${t}</div><div class="mtiles">${tiles}</div>`;
+  const head = `<button class="mme" data-act="go" data-v="profile"><span class="av">${esc((me.name || '?').slice(0, 1))}</span><span class="mmt"><b>${esc(me.name)}</b><small><span class="pill p-closed">${ROLE_SHORT[me.role]}</span>${me.isCustodian && isAdmin() ? ' · ผู้ดูแลเลขบัญชี' : isCeo() ? ' · อนุมัติใบเสนอ' : ''}</small></span>${ms('chevron_right')}</button>`;
+  let body;
+  if (isCeo()) {
+    body = sec('ดูข้อมูล', tile('go', 'payq', 'history', 'ประวัติใบเสนอ', paidM != null ? `โอนแล้วเดือนนี้ ${paidM} ใบ` : 'ใบเสนอทั้งหมด') + tile('go', 'pc', 'savings', 'เงินสดย่อย', pcb, null, pcLow ? 'bad' : '')
+      + tile('go', 'ledger', 'menu_book', 'สมุดค่าใช้จ่าย', 'รายการที่ลงบัญชีแล้ว') + tile('tvView', '', 'tv', 'หน้าจอสรุป (TV)', 'เปิดเต็มจอ'));
+  } else {
+    body = sec('การเงิน', tile('go', 'payq', 'approval', 'ขออนุมัติโอน', `รอเข้าใบเสนอ ${waitN}${A ? ` · รอ CEO ${ceoN}` : ''}`, waitN ? [waitN, ''] : null) + tile('go', 'pc', 'savings', 'เงินสดย่อย', pcb, null, pcLow ? 'bad' : '')
+      + tile('go', 'ledger', 'menu_book', 'สมุดค่าใช้จ่าย', 'รายการที่ลงบัญชีแล้ว') + tile('go', 'report', 'monitoring', 'รายงาน', `${monTH(mon)} · ส่งออก Excel`))
+      + sec('เอกสาร', tile('go', 'claims', 'receipt_long', 'ใบเบิกทั้งหมด', `${L.length} ใบ · ค้นหา · กรองสถานะ`) + tile('tvView', '', 'tv', 'หน้าจอสรุป (TV)', 'ดูตัวอย่าง'))
+      + `<div class="msec">ระบบ</div><button class="mrow" data-act="go" data-v="settings">${ms('settings')}<span>ตั้งค่า<small>อัตรา · รถ · ผู้ใช้ · จอแสดงผล</small></span>${ST.trialMode && isCust() ? '<span class="badge">ทดลอง</span>' : ''}${ms('chevron_right')}</button>`;
+  }
+  return `<div class="mmore">${head}${body}<button class="mout" data-act="logout">${ms('logout')}ออกจากระบบ</button><div class="mfoot">C2-Pay · ${VERSION}</div></div>`;
 }
 function vProfile() {
   const me = ST.me;
@@ -555,12 +574,26 @@ function vehHtml(p) {
 const vehTextPlain = (p) => { const v = p.veh; if (!v) return ''; if (v.mode === 'none') return 'ไม่ได้ใช้รถของเรา (ไปกับรถคนอื่น/รถลูกค้า)'; return `${p.car === 'ev' || v.type === 'ev' ? 'รถไฟฟ้า' : 'รถน้ำมัน'} · ทะเบียน ${v.plate}${v.prov ? ' ' + v.prov : ''}${v.name ? ` (${v.name})` : v.mode === 'own' ? ' (รถอื่น/รถส่วนตัว)' : ''}`; };
 function vehBox(f) {
   const X = !!f.extNo, V = (ST.settings.vehicles || []), v = f.veh || { mode: '' };
-  const cur = v.mode === 'co' ? `co:${v.id}` : v.mode;
-  const opts = `<option value="">— เลือกรถ —</option>${V.length ? `<optgroup label="รถของบริษัท">${V.map((x) => `<option value="co:${esc(x.id)}" ${cur === 'co:' + x.id ? 'selected' : ''}>${esc(x.plate)} ${esc(x.prov || '')}${x.name ? ' · ' + esc(x.name) : ''} · ${x.car === 'ev' ? 'รถไฟฟ้า' : 'รถน้ำมัน'}</option>`).join('')}</optgroup>` : ''}
-    ${v.mode === 'co' && !V.some((x) => x.id === v.id) ? `<option value="co:${esc(v.id)}" selected>${esc(v.plate)} (ลบจากตั้งค่าแล้ว)</option>` : ''}
-    <option value="own" ${cur === 'own' ? 'selected' : ''}>รถอื่น / รถส่วนตัว (พิมพ์ทะเบียน)</option><option value="none" ${cur === 'none' ? 'selected' : ''}>ไม่ได้ใช้รถของเรา (ไปกับรถคนอื่น/รถลูกค้า)</option>`;
+  const open = !X && (!v.mode || f.vehOpen);
+  const tyPill = (car) => `<span class="vty ${car === 'ev' ? 'ev' : 'fu'}">${ms(car === 'ev' ? 'ev_station' : 'local_gas_station')}${car === 'ev' ? 'รถไฟฟ้า' : 'รถน้ำมัน'}</span>`;
+  const plate = (pl, pv) => `<span class="vplate"><b>${esc(pl)}</b>${pv ? `<small>${esc(pv)}</small>` : ''}</span>`;
+  const coCard = (x, on, tail) => `<button type="button" class="vcard ${on ? 'on' : ''}" data-act="${tail ? 'vehOpen' : 'vehPick'}" data-v="co:${esc(x.id)}" ${X ? 'disabled' : ''} aria-pressed="${on}">${plate(x.plate, x.prov)}<span class="vinfo"><b>${esc(x.name || 'รถของบริษัท')}</b>${tyPill(x.car)}</span>${tail || `<span class="vrad" aria-hidden="true"></span>`}</button>`;
+  const altBtn = (mode, ic, l, sub, on) => `<button type="button" class="valt ${on ? 'on' : ''}" data-act="vehPick" data-v="${mode}" aria-pressed="${on}">${ms(ic)}<b>${l}</b><small>${sub}</small></button>`;
+  const change = X ? '' : `<span class="vchg">${ms('swap_horiz')}เปลี่ยน</span>`;
+  let body;
+  if (open) {
+    body = `${V.length ? `<div class="vgrid">${V.map((x) => coCard(x, v.mode === 'co' && v.id === x.id)).join('')}</div>` : `<p class="formula" style="margin:0 0 8px">ยังไม่มีรถของบริษัท${isAdmin() ? ' · เพิ่มได้ที่ ตั้งค่า → ค่าทั่วไป → รถของบริษัท' : ''}</p>`}
+      <div class="valts">${altBtn('own', 'edit', 'รถอื่น / รถส่วนตัว', 'พิมพ์ทะเบียนเอง', v.mode === 'own')}${altBtn('none', 'no_crash', 'ไม่ได้ใช้รถของเรา', 'ไปกับรถคนอื่น/รถลูกค้า', v.mode === 'none')}</div>`;
+  } else if (v.mode === 'co') {
+    const x = V.find((y) => y.id === v.id) || { id: v.id, plate: v.plate, prov: v.prov, name: (v.name || '') + ' (ลบจากตั้งค่าแล้ว)', car: f.car === 'ev' ? 'ev' : 'fuel' };
+    body = coCard(x, true, change);
+  } else if (v.mode === 'own') {
+    body = `<button type="button" class="vcard on" data-act="vehOpen" ${X ? 'disabled' : ''}>${v.plate ? plate(v.plate, v.prov) : `<span class="vic">${ms('edit')}</span>`}<span class="vinfo"><b>รถอื่น / รถส่วนตัว</b><small>${v.plate ? 'ทะเบียนที่พิมพ์ด้านล่าง' : 'พิมพ์ทะเบียนด้านล่าง'}</small></span>${change}</button>`;
+  } else {
+    body = `<button type="button" class="vcard on" data-act="vehOpen" ${X ? 'disabled' : ''}><span class="vic">${ms('no_crash')}</span><span class="vinfo"><b>ไม่ได้ใช้รถของเรา</b><small>ไปกับรถคนอื่น/รถลูกค้า · ไม่เบิกค่ารถ</small></span>${change}</button>`;
+  }
   const own = v.mode === 'own' ? `<div class="vown"><div class="field"><label for="f-vplate">ทะเบียน</label><input class="inp" id="f-vplate" data-vf="plate" maxlength="20" value="${esc(v.plate)}" placeholder="เช่น 3ขค 4455" ${X ? 'readonly' : ''}></div><div class="field"><label for="f-vprov">จังหวัด</label><input class="inp" id="f-vprov" data-vf="prov" maxlength="40" value="${esc(v.prov)}" placeholder="เช่น ชัยนาท" ${X ? 'readonly' : ''}></div></div>` : '';
-  return `<div class="field full" id="vehField"><label for="f-veh">รถที่ใช้${X ? ' (ตามใบเดิม)' : ''}</label><select class="sel" id="f-veh" ${X ? 'disabled' : ''}>${opts}</select>${!V.length && isAdmin() ? `<span class="hint">ยังไม่มีรถของบริษัท · เพิ่มได้ที่ ตั้งค่า → ค่าทั่วไป → รถของบริษัท</span>` : ''}${own}</div>`;
+  return `<div class="field full" id="vehField"><label>รถที่ใช้${X ? ' (ตามใบเดิม)' : ''}</label><div id="vehPick" tabindex="-1" class="vpick">${body}</div>${own}</div>`;
 }
 function vehCard(D) {
   const L = D.vehicles || [];
@@ -1689,7 +1722,7 @@ async function trvClick(a, v, b) {
     if (!(k.km > 0)) chk.push([$('#f-km') || '#f-stop-0', 'ระยะทาง', () => 'ใส่ระยะทางไป-กลับ']);
     if (f.kmManual && f.kmCalc != null && f.kmSrc !== 'est' && Math.abs(k.km - f.kmCalc) >= 0.5) chk.push(['#f-kmr', 'เหตุผลที่แก้ระยะทาง']);
     if (f.hotelOver && k.nights) chk.push(['#f-hr', 'ราคาที่พักต่อคืน', vMoney], ['#f-hre', 'เหตุผลที่พักเกินอัตรา']);
-    if (!f.extNo) chk.push(['#f-veh', 'รถที่ใช้']);
+    if (!f.extNo) chk.push(['#vehPick', 'รถที่ใช้', () => f.veh && f.veh.mode ? '' : 'เลือกรถที่ใช้']);
     if (!f.extNo && f.veh && f.veh.mode === 'own') chk.push(['#f-vplate', 'ทะเบียนรถ']);
     if (!f.extNo && f.car === 'none') chk.push(['#f-carwhy', 'เหตุผลที่ไม่เบิกค่าน้ำมัน/ค่าชาร์จ']);
     if (!f.extNo && f.car === 'ev') chk.push(['#f-pev', 'ค่าไฟชาร์จ (บาท/kWh)', (x) => Number(x) > 0 && Number(x) <= 50 ? '' : 'ใส่ค่าไฟต่อหน่วย 0.5–50 บาท']);
@@ -2044,6 +2077,8 @@ async function r5Click(a, v, b) {
     return true;
   }
   if (a === 'tvView') { closeDrawer(); startTV('preview'); return true; }
+  if (a === 'vehPick') { applyVeh(v); if (v === 'own') setTimeout(() => $('#f-vplate')?.focus(), 50); return true; }
+  if (a === 'vehOpen') { if (ST.form) { const sc = $('#view').scrollTop; ST.form.vehOpen = true; render(); $('#view').scrollTop = sc; } return true; }
   if (a === 'carSet' || a === 'carWhy') {
     const f = ST.form; if (!f) return true; const sc = $('#view').scrollTop, st = set();
     if (a === 'carWhy') { f.carWhy = v; }
@@ -2090,9 +2125,10 @@ async function tvRefresh() {
   }
   if (TV.mode) tvRender();
 }
-document.addEventListener('change', (e) => {
-  if (e.target.id !== 'f-veh' || !ST.form) return;
-  const f = ST.form, val = e.target.value, st = set(), sc = $('#view').scrollTop; f.evHint = '';
+function applyVeh(val) {
+  if (!ST.form) return;
+  const f = ST.form;
+  f.vehOpen = false; const st = set(), sc = $('#view').scrollTop; f.evHint = '';
   if (!val) f.veh = { mode: '', id: '', plate: '', prov: '' };
   else if (val === 'own') { if (f.veh.mode === 'none') { f.car = 'fuel'; f.carWhy = ''; } f.veh = { mode: 'own', id: '', plate: f.veh.mode === 'own' ? f.veh.plate : '', prov: f.veh.mode === 'own' ? f.veh.prov : '' }; }
   else if (val === 'none') { f.veh = { mode: 'none', id: '', plate: '', prov: '' }; f.car = 'none'; f.carWhy = VEH_NONE_WHY; }
@@ -2104,7 +2140,8 @@ document.addEventListener('change', (e) => {
     else { f.car = v.car === 'ev' ? 'ev' : 'fuel'; if (f.carWhy === VEH_NONE_WHY) f.carWhy = ''; f.evAsked = true; }
   }
   render(); $('#view').scrollTop = sc;
-});
+}
+
 document.addEventListener('input', (e) => { const k = e.target.dataset && e.target.dataset.vf; if (k && ST.form && ST.form.veh) ST.form.veh[k] = e.target.value; });
 document.addEventListener('visibilitychange', () => { if (!document.hidden && TV.mode && Date.now() - TV.at > TV_REFRESH_MS) tvRefresh(); });
 window.addEventListener('resize', () => { if (TV.mode) tvFit(); });
