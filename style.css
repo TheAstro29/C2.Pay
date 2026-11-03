@@ -843,3 +843,16 @@ body { position: fixed; inset: 0; width: 100%; height: 100%; height: 100dvh; }
 button, .btn, [data-act] { -webkit-tap-highlight-color: transparent; }
 @media (hover: none) and (pointer: coarse) { input.inp, select.sel, textarea.inp { font-size: 16px; } }
 @media print { html, body { position: static !important; overflow: visible !important; height: auto !important; } }
+
+/* ===== แผ่นยืนยันรหัสผ่านบนมือถือ: ชิดด้านบน อยู่เหนือคีย์บอร์ดเสมอ (iOS Safari / Google Sites) ===== */
+.psh-wrap { top: var(--vvt, 0px); bottom: auto; height: var(--vvh, 100%); animation: none; }
+.psh { max-height: calc(var(--vvh, 100vh) - 24px); overflow-y: auto; overscroll-behavior: contain; }
+@media (hover: none) and (pointer: coarse), (max-width: 699px) {
+  .psh-wrap { align-items: flex-start; padding: max(12px, env(safe-area-inset-top)) 12px 12px; }
+  .psh { border-radius: 18px; padding-bottom: 18px; }
+}
+
+/* ===== Face ID / สแกนนิ้ว ===== */
+.btn.bio { height: 50px; font-size: 15px; } .btn.bio .ms { font-size: 24px; }
+.psh-or { display: flex; align-items: center; gap: 10px; color: var(--sub); font-size: 12px; } .psh-or::before, .psh-or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.wabtn { margin-top: 6px; align-self: flex-start; } .wadone { display: inline-flex; align-items: center; gap: 6px; margin-top: 6px; color: var(--good); font-size: 12.5px; font-weight: 600; } .wadone .ms { font-size: 17px; }

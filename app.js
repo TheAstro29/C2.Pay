@@ -45,6 +45,7 @@ function errMsg(e) {
 }
 async function api(action, data = {}) {
   try {
+    if (ST.waNext && Object.prototype.hasOwnProperty.call(data, 'password')) { data = { ...data, webauthn: ST.waNext }; ST.waNext = null; }
     const r = await FN.httpsCallable('payApi')({ ...data, action, token: getToken() });
     return r.data;
   } catch (e) {
@@ -191,6 +192,7 @@ async function bootInner() {
   if (r.setupNeeded) { showSetup(); return; }
   if (ST.me.role === 'none') { showNoPerm(); return; }
   if (ST.me.role === 'guest') { startTV('session'); return; }
+  waInit().then(() => { if (ST.view === 'profile') render(); });
   if (isCeo() && !ST.apv) loadApv();
   authEl().hidden = true; $('#stage').hidden = false;
   if (!isAdmin() && ST.view === 'settings') ST.view = 'home';
@@ -279,7 +281,7 @@ function vProfile() {
       <dt>สิทธิ์ C2-Pay</dt><dd>${ROLE_LABEL[me.role]}${me.isCustodian ? ' · ผู้ดูแลเลขบัญชี' : ''}</dd><dt>C2-Calendar</dt><dd>${esc(me.calRole)}</dd>
       <dt>บัญชีรับเงิน</dt><dd>${me.bank ? `${esc(me.bank.bank)} <span class="num">${esc(me.bank.no)}</span><br><span style="color:var(--sub);font-size:12.5px">ชื่อบัญชี ${esc(me.bank.name)} · แก้ล่าสุด ${dtTime(me.bank.changedAt)}</span>` : 'ยังไม่มี'}</dd></dl>
       <p class="formula" style="margin:10px 0 0">${ms('lock', 'style="font-size:15px;vertical-align:-3px"')} เลขบัญชีเพิ่ม/แก้ได้โดยผู้ดูแลเลขบัญชีเท่านั้น (${esc(ST.custodianName)}) · เปลี่ยนรหัสผ่านที่ C2-Calendar</p></div>
-    <div class="card"><h3>${ms('logout')}ออกจากระบบ</h3><p style="margin:0 0 10px;color:var(--sub)">ออกจาก C2-Pay บนอุปกรณ์นี้ (C2-Calendar ไม่ถูกออกจากระบบ)</p><button class="btn" data-act="logout">${ms('logout')}ออกจากระบบ</button></div></div>`;
+    ${waCard()}<div class="card"><h3>${ms('logout')}ออกจากระบบ</h3><p style="margin:0 0 10px;color:var(--sub)">ออกจาก C2-Pay บนอุปกรณ์นี้ (C2-Calendar ไม่ถูกออกจากระบบ)</p><button class="btn" data-act="logout">${ms('logout')}ออกจากระบบ</button></div></div>`;
 }
 
 // ---------- settings ----------
@@ -1883,6 +1885,7 @@ document.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key ==
 
 let cdTimer = null;
 function afterRender() {
+  waDecorate();
   // ช่องยืนยันขั้น 3: ปุ่มลบกดได้หลังพิมพ์ข้อความ + รหัสผ่าน แล้วรอ 5 วินาที
   const t = $('#cf-t'), p = $('#cf-p'), go = $('#cf-go');
   if (t && p && go) {
@@ -1983,29 +1986,104 @@ function ceoSum(b) {
 /** แผ่นยืนยันรหัสผ่าน (ใช้แทนลายเซ็น) — run(password, reason) โยน error = แสดงในแผ่น ไม่ปิด */
 function pwSheet(o, run) {
   $('#psh')?.remove();
-  const w = document.createElement('div'); w.id = 'psh'; w.className = 'psh-wrap';
+  const bio = !o.noBio && waReady(), w = document.createElement('div'); w.id = 'psh'; w.className = 'psh-wrap';
   w.innerHTML = `<div class="psh" role="dialog" aria-modal="true" aria-labelledby="psh-t"><b id="psh-t">${esc(o.title)}</b><p>${o.desc}</p>
     ${o.reason ? `<div class="field"><label for="psh-r">${esc(o.reason)}</label><textarea class="inp" id="psh-r" rows="2" maxlength="200"></textarea></div>` : ''}
+    ${bio ? `<button class="btn ${o.danger ? 'danger' : 'pri'} block bio" id="psh-bio">${ms('fingerprint')}ยืนยันด้วย ${WA_NAME}</button><div class="psh-or"><span>หรือใช้รหัสผ่าน</span></div>` : ''}
     <div class="field"><label for="psh-pw">รหัสผ่าน C2-Calendar ของคุณ</label><input class="inp" id="psh-pw" type="password" autocomplete="current-password"></div>
     <div class="err" id="psh-err" role="alert"></div>
-    <button class="btn ${o.danger ? 'danger' : 'pri'} block" id="psh-ok" style="height:44px">${ms(o.icon || 'draw')}${esc(o.btn)}</button><button class="btn ghost block" id="psh-x">ยกเลิก</button></div>`;
+    <button class="btn ${bio ? '' : o.danger ? 'danger' : 'pri'} block" id="psh-ok" style="height:44px">${ms(o.icon || 'draw')}${esc(o.btn)}${bio ? 'ด้วยรหัสผ่าน' : ''}</button><button class="btn ghost block" id="psh-x">ยกเลิก</button></div>`;
   document.body.appendChild(w);
   const close = () => { w.remove(); document.removeEventListener('keydown', esc_); };
   const esc_ = (e) => { if (e.key === 'Escape') close(); };
   document.addEventListener('keydown', esc_);
   w.addEventListener('click', (e) => { if (e.target === w) close(); });
   $('#psh-x', w).onclick = close;
+  const reason = () => { const r = o.reason ? $('#psh-r', w).value.trim() : ''; if (o.reason && !r) { $('#psh-err', w).textContent = `กรอก${o.reason}`; $('#psh-r', w).focus(); return null; } return r; };
   const go = async () => {
-    const r = o.reason ? $('#psh-r', w).value.trim() : '', pw = $('#psh-pw', w).value;
-    if (o.reason && !r) { $('#psh-err', w).textContent = `กรอก${o.reason}`; $('#psh-r', w).focus(); return; }
+    const r = reason(); if (r === null) return; const pw = $('#psh-pw', w).value;
     if (!pw) { $('#psh-err', w).textContent = 'ใส่รหัสผ่านเพื่อยืนยัน'; $('#psh-pw', w).focus(); return; }
-    await busy($('#psh-ok', w), async () => { try { await run(pw, r); close(); } catch (e) { $('#psh-err', w).textContent = errMsg(e); $('#psh-pw', w).value = ''; $('#psh-pw', w).focus(); } });
+    await busy($('#psh-ok', w), async () => { try { await run(pw, r, null); close(); } catch (e) { $('#psh-err', w).textContent = errMsg(e); $('#psh-pw', w).value = ''; $('#psh-pw', w).focus(); } });
   };
   $('#psh-ok', w).onclick = go;
   $('#psh-pw', w).addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
-  (o.reason ? $('#psh-r', w) : $('#psh-pw', w)).focus();
+  if (bio) {
+    let opt = waPrefetch();
+    $('#psh-bio', w).onclick = async () => {
+      const r = reason(); if (r === null) return; $('#psh-err', w).textContent = '';
+      await busy($('#psh-bio', w), async () => {
+        try { const wa = await waAssert(opt); await run('', r, wa); close(); }
+        catch (e) { opt = waPrefetch(); $('#psh-err', w).textContent = e && e.name === 'NotAllowedError' ? `ยกเลิก ${WA_NAME} หรือหมดเวลา · กดใหม่ หรือใช้รหัสผ่าน` : errMsg(e); }
+      });
+    };
+    if (o.reason) $('#psh-r', w).focus();
+  } else (o.reason ? $('#psh-r', w) : $('#psh-pw', w)).focus();
 }
 
+// ----- Face ID / สแกนนิ้ว (WebAuthn passkey) -----
+const WA_NAME = /iPhone|iPad|Macintosh/.test(navigator.userAgent) ? 'Face ID / Touch ID' : 'สแกนนิ้ว / ใบหน้า';
+const wab64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const waBuf = (s) => { const b = atob(String(s).replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((String(s).length + 3) % 4)); return Uint8Array.from(b, (ch) => ch.charCodeAt(0)); };
+async function waInit() {
+  ST.waAvail = false; ST.waKeys = [];
+  try { ST.waAvail = !!(window.PublicKeyCredential && window.isSecureContext && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()); } catch (e) { ST.waAvail = false; }
+  if (!ST.me || ['none', 'guest'].includes(ST.me.role)) return;
+  try { ST.waKeys = (await api('waList')).list; } catch (e) { ST.waKeys = []; }
+}
+const waReady = () => !!(ST.waAvail && (ST.waKeys || []).some((k) => k.rpId === location.hostname));
+let waPre = null;
+function waPrefetch() { waPre = { at: Date.now(), p: api('waAuthOptions', { rpId: location.hostname }) }; waPre.p.catch(() => {}); return waPre; }
+async function waAssert(pre) {
+  pre = pre && Date.now() - pre.at < 150000 ? pre : waPrefetch();
+  const o = await pre.p; if (o.none) throw new Error(`เครื่องนี้ยังไม่ได้เปิดใช้ ${WA_NAME} · เปิดได้ที่หน้าโปรไฟล์`);
+  const cred = await navigator.credentials.get({ publicKey: { challenge: waBuf(o.challenge), rpId: o.rpId, timeout: o.timeout, userVerification: 'required', allowCredentials: o.allowCredentials.map((c) => ({ type: 'public-key', id: waBuf(c.id) })) } });
+  const r = cred.response;
+  return { id: cred.id, clientDataJSON: wab64(r.clientDataJSON), authenticatorData: wab64(r.authenticatorData), signature: wab64(r.signature) };
+}
+function waDeviceLabel() {
+  const ua = navigator.userAgent;
+  return /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'มือถือ Android' : /Mac/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'คอม Windows' : 'อุปกรณ์';
+}
+function waCard() {
+  const me = ST.me; if (!me || ['none', 'guest'].includes(me.role)) return '';
+  const L = ST.waKeys || [], here = L.filter((k) => k.rpId === location.hostname);
+  const row = (k) => `<div class="drow"><span class="dic">${ms('fingerprint')}</span><span style="flex:1;min-width:0"><b>${esc(k.label)}</b><small>เปิดใช้ ${dtTime(k.createdAt)}${k.lastUsed ? ` · ใช้ล่าสุด ${dtTime(k.lastUsed)}` : ''}</small></span><button class="btn sm dout" data-act="waRemove" data-v="${k.id}">${ST.waAsk === k.id ? 'ยืนยันลบ' : 'ลบ'}</button></div>`;
+  return `<div class="card"><h3>${ms('fingerprint')}ยืนยันด้วย ${WA_NAME}</h3>
+    <p style="margin:0 0 10px;color:var(--sub);font-size:13px">ใช้แทนการพิมพ์รหัสผ่านตอนอนุมัติ/ยืนยันงานสำคัญ · ข้อมูลใบหน้า/ลายนิ้วมืออยู่ในเครื่องเท่านั้น ไม่ถูกส่งออก</p>
+    ${here.length ? here.map(row).join('') : '<div class="empty" style="padding:10px">ยังไม่ได้เปิดใช้</div>'}
+    ${ST.waAvail ? `<button class="btn ${here.length ? '' : 'pri'} block" style="margin-top:10px" data-act="waAdd">${ms('add')}${here.length ? 'เพิ่มเครื่องนี้อีกครั้ง' : `เปิดใช้ ${WA_NAME} บนเครื่องนี้`}</button>` : `<p class="formula" style="margin:8px 0 0">${ms('info', 'style="font-size:15px;vertical-align:-3px"')} เครื่อง/เบราว์เซอร์นี้ยังไม่รองรับ · ใช้ได้บน iPhone (iOS 16+) และ Android ที่ตั้งสแกนนิ้ว/ใบหน้าไว้ · ถ้าเปิดผ่าน Google Sites ให้เปิดเป็นแอปแยก</p>`}</div>`;
+}
+async function waAddFlow() {
+  pwSheet({ title: `เปิดใช้ ${WA_NAME}`, desc: `ขั้น 1/2 · ยืนยันรหัสผ่านหนึ่งครั้ง`, btn: 'ยืนยันรหัสผ่าน', icon: 'lock_open', noBio: true },
+    async (password) => { const o = await api('waRegOptions', { rpId: location.hostname, password }); setTimeout(() => waScanSheet(o), 0); });
+}
+/** ขั้น 2: ปุ่มที่ผู้ใช้แตะเอง แล้วเรียก Face ID ทันที (Safari ต้องเรียกจากการแตะโดยตรง) */
+function waScanSheet(o) {
+  $('#psh')?.remove();
+  const w = document.createElement('div'); w.id = 'psh'; w.className = 'psh-wrap';
+  w.innerHTML = `<div class="psh" role="dialog" aria-modal="true" aria-labelledby="psh-t"><b id="psh-t">เปิดใช้ ${WA_NAME}</b><p>ขั้น 2/2 · แตะปุ่มด้านล่าง แล้วสแกน ${WA_NAME} เพื่อผูกเครื่องนี้กับบัญชีของคุณ</p>
+    <button class="btn pri block bio" id="psh-bio">${ms('fingerprint')}แตะเพื่อสแกน ${WA_NAME}</button><div class="err" id="psh-err" role="alert"></div><button class="btn ghost block" id="psh-x">ยกเลิก</button></div>`;
+  document.body.appendChild(w);
+  const close = () => w.remove(); $('#psh-x', w).onclick = close;
+  $('#psh-bio', w).onclick = async () => {
+    const b = $('#psh-bio', w); let cred;
+    try { cred = await navigator.credentials.create({ publicKey: { ...o, challenge: waBuf(o.challenge), user: { ...o.user, id: waBuf(o.user.id) }, excludeCredentials: o.excludeCredentials.map((c) => ({ type: 'public-key', id: waBuf(c.id) })) } }); }
+    catch (e) { $('#psh-err', w).textContent = e && e.name === 'InvalidStateError' ? 'เครื่องนี้เปิดใช้ไว้แล้ว' : e && e.name === 'NotAllowedError' ? `ยกเลิก ${WA_NAME} หรือหมดเวลา · แตะใหม่อีกครั้ง` : errMsg(e); return; }
+    await busy(b, async () => {
+      try { const r = cred.response; await api('waRegister', { cred: { id: cred.id, clientDataJSON: wab64(r.clientDataJSON), attestationObject: wab64(r.attestationObject) }, label: waDeviceLabel() });
+        close(); await waInit(); render(); toast(`เปิดใช้ ${WA_NAME} แล้ว`, 'fingerprint'); }
+      catch (e) { $('#psh-err', w).textContent = `${errMsg(e)} · ถ้าหมดเวลา ให้กดยกเลิกแล้วเริ่มใหม่`; }
+    });
+  };
+}
+// ช่องรหัสผ่านในหน้าอื่น (แก้เลขบัญชี ส่งต่อสิทธิ์ ล้างข้อมูล ปิดโหมดทดลอง): เพิ่มปุ่มยืนยันด้วย Face ID
+const WA_FIELDS = ['bk-pw', 'ho-pw', 'cf-p', 'te-pw'];
+function waDecorate() {
+  if (!waReady()) return;
+  WA_FIELDS.forEach((id) => { const el = document.getElementById(id); if (!el || el.dataset.wa) return; el.dataset.wa = '1';
+    el.insertAdjacentHTML('afterend', `<button type="button" class="btn sm wabtn" data-act="waInline" data-v="${id}">${ms('fingerprint')}ใช้ ${WA_NAME} แทน</button>`);
+    if (!waPre || Date.now() - waPre.at > 120000) waPrefetch(); });
+}
 // ----- ตั้งค่า → จอแสดงผล -----
 async function loadDisp() { try { ST.disp = await api('dispList'); } catch (e) { fail(e); ST.disp = { list: [], now: Date.now() }; } render(); }
 function vDisplays() {
@@ -2056,13 +2134,13 @@ async function r5Click(a, v, b) {
     if (chk.length && !need(chk)) return true;
     const amt = bt.items.filter((x) => keep.includes(x.id)).reduce((t, x) => t + x.amount, 0), nNo = bt.items.length - keep.length;
     pwSheet({ title: 'ยืนยันการอนุมัติ', desc: `อนุมัติ <b>${keep.length}</b> รายการ <b class="num">${fmt(amt)}</b> บาท${nNo ? ` · ไม่อนุมัติ ${nNo} รายการ (กลับไปให้ Admin แก้)` : ''}<br>การกดยืนยันมีผลแทนลายเซ็นบนใบเสนอ`, btn: 'ยืนยันและลงนามอิเล็กทรอนิกส์', icon: 'draw' },
-      async (password) => { const r = await api('apvCeoApp', { no: bt.no, keep, notes, password }); ST.ceoDec = null; await loadApv(); drawBatch(bt.no); toast(`อนุมัติ ${bt.no} แล้ว · ${r.kept} รายการ${r.dropped ? ` · ${r.dropped} รายการกลับไปรอ` : ''}`, 'verified'); });
+      async (password, _r, webauthn) => { const r = await api('apvCeoApp', { no: bt.no, keep, notes, password, ...(webauthn ? { webauthn } : {}) }); ST.ceoDec = null; await loadApv(); drawBatch(bt.no); toast(`อนุมัติ ${bt.no} แล้ว · ${r.kept} รายการ${r.dropped ? ` · ${r.dropped} รายการกลับไปรอ` : ''}`, 'verified'); });
     return true;
   }
   if (a === 'ceoRejectAsk') {
     const no = ST.openBatch;
     pwSheet({ title: 'ไม่อนุมัติทั้งใบ', desc: `ใบเสนอ <b class="num">${esc(no)}</b> จะถูกยกเลิก ทุกรายการกลับไปรอเข้าใบเสนอใหม่ พร้อมเหตุผลของคุณให้ Admin เห็น`, reason: 'เหตุผลที่ไม่อนุมัติ', btn: 'ยืนยันไม่อนุมัติทั้งใบ', icon: 'block', danger: true },
-      async (password, note) => { await api('apvCeoReject', { no, note, password }); ST.ceoDec = null; await loadApv(); closeDrawer(); render(); toast(`ไม่อนุมัติ ${no} แล้ว · รายการกลับไปรอ`, 'block'); });
+      async (password, note, webauthn) => { await api('apvCeoReject', { no, note, password, ...(webauthn ? { webauthn } : {}) }); ST.ceoDec = null; await loadApv(); closeDrawer(); render(); toast(`ไม่อนุมัติ ${no} แล้ว · รายการกลับไปรอ`, 'block'); });
     return true;
   }
   if (a === 'dispPair') {
@@ -2077,6 +2155,16 @@ async function r5Click(a, v, b) {
     return true;
   }
   if (a === 'tvView') { closeDrawer(); startTV('preview'); return true; }
+  if (a === 'waAdd') { waAddFlow(); return true; }
+  if (a === 'waRemove') { if (ST.waAsk !== v) { ST.waAsk = v; render(); return true; } await busy(b, async () => { await api('waRemove', { id: v }); ST.waAsk = null; await waInit(); render(); toast('ลบเครื่องแล้ว'); }); return true; }
+  if (a === 'waInline') {
+    const el = document.getElementById(v); if (!el) return true;
+    await busy(b, async () => {
+      try { ST.waNext = await waAssert(waPre); el.value = '••••••••'; el.readOnly = true; el.dispatchEvent(new Event('input', { bubbles: true })); b.outerHTML = `<span class="wadone">${ms('verified_user')}ยืนยันด้วย ${WA_NAME} แล้ว · กดปุ่มบันทึกได้เลย</span>`; }
+      catch (e) { waPrefetch(); toast(e && e.name === 'NotAllowedError' ? `ยกเลิก ${WA_NAME} · ใช้รหัสผ่านแทนได้` : errMsg(e), 'error'); }
+    });
+    return true;
+  }
   if (a === 'vehPick') { applyVeh(v); if (v === 'own') setTimeout(() => $('#f-vplate')?.focus(), 50); return true; }
   if (a === 'vehOpen') { if (ST.form) { const sc = $('#view').scrollTop; ST.form.vehOpen = true; render(); $('#view').scrollTop = sc; } return true; }
   if (a === 'carSet' || a === 'carWhy') {
@@ -2241,7 +2329,12 @@ document.addEventListener('click', (e) => {
 ['gesturestart', 'gesturechange', 'gestureend'].forEach((t) => document.addEventListener(t, (e) => e.preventDefault(), { passive: false }));
 document.addEventListener('touchmove', (e) => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
 // แตะสองครั้งเพื่อซูม: ปิดด้วย CSS touch-action: manipulation (ไม่ดักแตะ เพื่อไม่ให้กดปุ่มติดกันเร็วๆ แล้วหาย)
-window.addEventListener('scroll', () => { if (window.scrollY || window.scrollX) window.scrollTo(0, 0); }, { passive: true });
+// คีย์บอร์ดมือถือ: ห้ามดึงหน้ากลับระหว่างพิมพ์ (iOS จะเลื่อนให้เห็นช่องกรอกเอง ถ้าดึงสู้กันจะสั่น) · ปิดคีย์บอร์ดแล้วค่อยคืนตำแหน่ง
+const isField = (el) => el && el.matches && el.matches('input:not([type=checkbox]):not([type=radio]):not([type=file]), textarea, select');
+document.addEventListener('focusout', () => setTimeout(() => { if (!isField(document.activeElement) && (window.scrollY || window.scrollX)) window.scrollTo(0, 0); }, 150));
+// แผ่นยืนยันรหัสผ่าน: วางในพื้นที่ที่มองเห็นจริง (เหนือคีย์บอร์ด) ด้วย visualViewport
+function vvSync() { const v = window.visualViewport; if (!v) return; const r = document.documentElement.style; r.setProperty('--vvh', `${Math.round(v.height)}px`); r.setProperty('--vvt', `${Math.round(v.offsetTop)}px`); }
+if (window.visualViewport) { window.visualViewport.addEventListener('resize', vvSync); window.visualViewport.addEventListener('scroll', vvSync); vvSync(); }
 
 boot();
 })();
