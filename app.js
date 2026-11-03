@@ -25,8 +25,8 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 const ms = (n, st = '') => `<span class="ms" ${st}>${n}</span>`;
 const MON = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
 const dtTime = (iso) => { if (!iso) return ''; const d = new Date(iso); return `${d.getDate()} ${MON[d.getMonth()]} ${d.getFullYear() + 543} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
-const ROLE_LABEL = { admin: 'Admin · ดูแลเงิน', ceo: 'CEO · ดูอย่างเดียว', user: 'User · ขอเบิกของตัวเอง', none: 'ไม่มีสิทธิ์' };
-const ROLE_SHORT = { admin: 'Admin', ceo: 'CEO', user: 'User', none: 'ไม่มีสิทธิ์' };
+const ROLE_LABEL = { admin: 'Admin · ดูแลเงิน', ceo: 'CEO · อนุมัติใบเสนอ', user: 'User · ขอเบิกของตัวเอง', guest: 'Guest · ดูสรุปอย่างเดียว', none: 'ไม่มีสิทธิ์' };
+const ROLE_SHORT = { admin: 'Admin', ceo: 'CEO', user: 'User', guest: 'Guest', none: 'ไม่มีสิทธิ์' };
 const CLEAR_PHRASE = 'ล้างข้อมูล C2-Pay';
 
 function deviceInfo() {
@@ -119,6 +119,7 @@ function showLogin(msg = '') {
       <div class="err" id="lg-err" role="alert">${esc(msg)}</div>
       <button class="btn pri block" id="lg-btn" style="height:44px" type="submit">${ms('login')}เข้าสู่ระบบ</button>
     </form>
+    <button class="btn ghost block lg-tv" type="button" data-act="tvPair">${ms('tv')}ใช้เป็นจอแสดงผล (TV)</button>
     <p style="font-size:12.5px;margin:0;color:var(--sub)">ลืมรหัสผ่านหรือบัญชีถูกล็อก ติดต่อ Admin ของ C2-Calendar · เข้าระบบครั้งเดียวใช้ได้ 30 วัน</p>`);
   $('#lg-u').focus();
   $('#loginForm').addEventListener('submit', async (ev) => {
@@ -138,7 +139,7 @@ function showLogin(msg = '') {
 async function logout() {
   const t = getToken(); setToken(null);
   try { if (t) await FN.httpsCallable('logoutSession')({ token: t }); } catch (e) { /* ไม่เป็นไร */ }
-  ST.me = null; showLogin();
+  ST.me = null; stopTV(); showLogin();
 }
 
 function showNoPerm() {
@@ -181,7 +182,7 @@ async function boot() {
   try { await bootInner(); } finally { splashOff(); }
 }
 async function bootInner() {
-  if (!getToken()) { showLogin(); return; }
+  if (!getToken()) { if (getD()) { startTV('display'); return; } showLogin(); return; }
   if (splashGone) { authEl().hidden = false; authEl().className = 'auth'; authEl().innerHTML = `<div class="loading"><div class="spin"></div><span>กำลังโหลด…</span></div>`; }
   else splashMsg('กำลังโหลดข้อมูลของคุณ…');
   let r;
@@ -189,30 +190,40 @@ async function bootInner() {
   ST.me = r.me; ST.settings = r.settings; ST.trialMode = r.trialMode; ST.custodianName = r.custodianName; ST.canSetup = r.canSetup;
   if (r.setupNeeded) { showSetup(); return; }
   if (ST.me.role === 'none') { showNoPerm(); return; }
+  if (ST.me.role === 'guest') { startTV('session'); return; }
+  if (isCeo() && !ST.apv) loadApv();
   authEl().hidden = true; $('#stage').hidden = false;
   if (!isAdmin() && ST.view === 'settings') ST.view = 'home';
   render();
 }
 
 // ===== navigation =====
+// เมนู: ['#', 'หัวหมวด'] = หัวข้อกลุ่ม · ['@new'...] = ปุ่มเด่นด้านบน
 const NAV_ADMIN = [
-  ['home', 'dashboard', 'ภาพรวม'], ['new', 'add_circle', 'สร้างใบใหม่'], ['claims', 'receipt_long', 'ใบเบิก'], ['inbox', 'inbox', 'คำขอจากทีมงาน'], ['clear', 'fact_check', 'เคลียร์เงิน'],
-  ['payq', 'approval', 'ขออนุมัติโอน'], ['pc', 'savings', 'เงินสดย่อย'], ['ledger', 'menu_book', 'สมุดค่าใช้จ่าย'], ['report', 'monitoring', 'รายงาน'],
-  ['settings', 'settings', 'ตั้งค่า'], ['profile', 'person', 'โปรไฟล์'],
+  ['@new', 'add', 'สร้างใบใหม่'], ['home', 'dashboard', 'ภาพรวม'],
+  ['#', 'งานเบิก-เคลียร์'], ['claims', 'receipt_long', 'ใบเบิก'], ['inbox', 'inbox', 'คำขอจากทีมงาน'], ['clear', 'fact_check', 'เคลียร์เงิน'],
+  ['#', 'การเงิน'], ['payq', 'approval', 'ขออนุมัติโอน'], ['pc', 'savings', 'เงินสดย่อย'], ['ledger', 'menu_book', 'สมุดค่าใช้จ่าย'], ['report', 'monitoring', 'รายงาน'],
+  ['#', 'ระบบ'], ['settings', 'settings', 'ตั้งค่า'], ['profile', 'person', 'โปรไฟล์'],
 ];
-const NAV_CEO = [['home', 'dashboard', 'ภาพรวม'], ['claims', 'receipt_long', 'ใบเบิก'], ['payq', 'approval', 'ขออนุมัติโอน'], ['pc', 'savings', 'เงินสดย่อย'], ['ledger', 'menu_book', 'สมุดค่าใช้จ่าย'], ['report', 'monitoring', 'รายงาน'], ['profile', 'person', 'โปรไฟล์']];
-const NAV_USER = [['home', 'luggage', 'ทริปของฉัน'], ['req', 'add_road', 'ขอเบิกค่าเดินทาง'], ['profile', 'person', 'โปรไฟล์']];
-const nav = () => isAdmin() ? NAV_ADMIN : isCeo() ? NAV_CEO : NAV_USER;
-const TITLES = { home: 'ภาพรวม', settings: 'ตั้งค่า', profile: 'โปรไฟล์', claims: 'ใบเบิก', inbox: 'คำขอจากทีมงาน', clear: 'เคลียร์เงิน', payq: 'ขออนุมัติโอน (ใบเสนอ CEO)', pc: 'เงินสดย่อย', req: 'ขอเบิกค่าเดินทาง', clr: 'เคลียร์เงินทริป', new: 'สร้างใบใหม่', ledger: 'สมุดค่าใช้จ่าย', adv: 'เคลียร์เงินทดรอง', more: 'เพิ่มเติม', report: 'รายงาน' };
+const NAV_CEO = [['home', 'dashboard', 'ภาพรวม'], ['#', 'รอ CEO'], ['ceoq', 'verified', 'รออนุมัติ'],
+  ['#', 'ดูข้อมูล'], ['claims', 'receipt_long', 'ใบเบิก'], ['payq', 'history', 'ประวัติใบเสนอ'], ['pc', 'savings', 'เงินสดย่อย'], ['ledger', 'menu_book', 'สมุดค่าใช้จ่าย'], ['report', 'monitoring', 'รายงาน'],
+  ['#', 'บัญชี'], ['tvView', 'tv', 'หน้าจอสรุป (TV)'], ['profile', 'person', 'โปรไฟล์']];
+const NAV_USER = [['@req', 'add_road', 'ขอเบิกค่าเดินทาง'], ['home', 'luggage', 'ทริปของฉัน'], ['#', 'บัญชี'], ['profile', 'person', 'โปรไฟล์']];
+const navAll = () => isAdmin() ? NAV_ADMIN : isCeo() ? NAV_CEO : NAV_USER;
+const nav = () => navAll().filter((n) => n[0] !== '#').map((n) => n[0][0] === '@' ? [n[0].slice(1), n[1], n[2]] : n);
+const TITLES = { ceoq: 'รอ CEO อนุมัติ', home: 'ภาพรวม', settings: 'ตั้งค่า', profile: 'โปรไฟล์', claims: 'ใบเบิก', inbox: 'คำขอจากทีมงาน', clear: 'เคลียร์เงิน', payq: 'ขออนุมัติโอน (ใบเสนอ CEO)', pc: 'เงินสดย่อย', req: 'ขอเบิกค่าเดินทาง', clr: 'เคลียร์เงินทริป', new: 'สร้างใบใหม่', ledger: 'สมุดค่าใช้จ่าย', adv: 'เคลียร์เงินทดรอง', more: 'เพิ่มเติม', report: 'รายงาน' };
 
 function renderNav() {
   const L = (ST.trv && ST.trv.list) || [];
   const bd = { inbox: L.filter((d) => d.status === 'submitted' || d.status === 'clearSub' || d.status === 'pending').length, clear: L.filter((d) => d.status === 'open').length, payq: L.filter((d) => !d.batch && (d.status === 'approve' || (d.status === 'topup' && d.settleSrc === 'BANK'))).length };
   const late = L.some((d) => ['late', 'warn'].includes((clearState(d) || {}).lv));
-  const badge = (k) => isAdmin() && bd[k] ? `<span class="badge ${k === 'inbox' || (k === 'clear' && late) ? 'red' : ''}">${bd[k]}</span>` : k === 'settings' && ST.trialMode && isCust() ? '<span class="badge">ทดลอง</span>' : '';
-  $('#sidenav').innerHTML = nav().map(([k, i, l, soon]) => `<button class="nitem ${ST.view === k ? 'on' : ''} ${soon ? 'soon' : ''}" data-act="go" data-v="${k}" title="${l}${soon ? ' (เร็วๆ นี้)' : ''}">${ms(i)}<span class="lbl">${l}</span>${badge(k)}</button>`).join('');
+  const ceoN = ST.apv ? ST.apv.batches.filter((x) => x.status === 'ceo').length : 0;
+  const badge = (k) => k === 'ceoq' && isCeo() && ceoN ? `<span class="badge red">${ceoN}</span>` : isAdmin() && bd[k] ? `<span class="badge ${k === 'inbox' || (k === 'clear' && late) ? 'red' : ''}">${bd[k]}</span>` : k === 'settings' && ST.trialMode && isCust() ? '<span class="badge">ทดลอง</span>' : '';
+  $('#sidenav').innerHTML = navAll().map(([k, i, l, soon]) => k === '#' ? `<div class="ngrp" role="presentation"><span>${i}</span></div>`
+    : k[0] === '@' ? `<button class="newbtn fx-hover ${ST.view === k.slice(1) ? 'on' : ''}" data-act="go" data-v="${k.slice(1)}" title="${l}">${ms(i)}<span class="lbl">${l}</span></button>`
+    : `<button class="nitem ${ST.view === k ? 'on' : ''} ${soon ? 'soon' : ''}" data-act="${k === 'tvView' ? 'tvView' : 'go'}" data-v="${k}" title="${l}${soon ? ' (เร็วๆ นี้)' : ''}">${ms(i)}<span class="lbl">${l}</span>${badge(k)}</button>`).join('');
   const b = isAdmin() ? [['home', 'dashboard', 'ภาพรวม'], ['inbox', 'inbox', 'คำขอ'], ['new', 'add', 'สร้าง'], ['clear', 'fact_check', 'เคลียร์'], ['more', 'more_horiz', 'เพิ่มเติม']]
-    : isCeo() ? [['home', 'dashboard', 'ภาพรวม'], ['claims', 'receipt_long', 'ใบเบิก'], ['pc', 'savings', 'เงินสดย่อย'], ['profile', 'person', 'โปรไฟล์']]
+    : isCeo() ? [['home', 'dashboard', 'ภาพรวม'], ['ceoq', 'verified', 'รออนุมัติ'], ['claims', 'receipt_long', 'ใบเบิก'], ['report', 'monitoring', 'รายงาน'], ['more', 'more_horiz', 'เพิ่มเติม']]
     : [['home', 'luggage', 'ทริปของฉัน'], ['req', 'add', 'ขอเบิก'], ['profile', 'person', 'โปรไฟล์']];
   $('#bnav').innerHTML = b.map(([k, i, l]) => `<button class="${k === 'req' || k === 'new' ? 'plus' : ''} ${ST.view === k ? 'on' : ''}" data-act="${k === 'more' ? 'more' : 'go'}" data-v="${k}">${ms(i)}<span>${l}</span>${badge(k)}</button>`).join('');
   $('#bnav').style.gridTemplateColumns = `repeat(${b.length}, 1fr)`;
@@ -225,7 +236,7 @@ function render() {
   $('#ttl').textContent = TITLES[ST.view] || '';
   $('#acts').innerHTML = `${IN_FRAME ? `<button class="btn sm ghost" data-act="openTab" title="เปิด C2-Pay ในแท็บใหม่ (พิมพ์และดาวน์โหลดไฟล์ได้เต็มที่)">${ms('open_in_new')}<span class="pc-only">เปิดในแท็บใหม่</span></button>` : ''}<button class="btn sm ghost" data-act="refresh" title="โหลดข้อมูลใหม่">${ms('refresh')}<span class="pc-only">โหลดใหม่</span></button>`;
   if (!isAdmin() && !isCeo()) $('#ttl').textContent = ST.view === 'home' ? 'ทริปของฉัน' : $('#ttl').textContent;
-  const V = { settings: vSettings, profile: vProfile, claims: vClaims, inbox: vInbox, clear: vClearList, payq: vPayq, pc: vPc, req: vReq, clr: vClr, more: vMore, new: vNew, ledger: vLedger, adv: vAdv, report: vReport };
+  const V = { ceoq: vCeoq, settings: vSettings, profile: vProfile, claims: vClaims, inbox: vInbox, clear: vClearList, payq: vPayq, pc: vPc, req: vReq, clr: vClr, more: vMore, new: vNew, ledger: vLedger, adv: vAdv, report: vReport };
   const v = (V[ST.view] || (isAdmin() || isCeo() ? vDash : vMyTrips))();
   if (ST.view === 'req') $('#ttl').textContent = ST.form && ST.form.extNo ? `ต่อทริป ${ST.form.extNo}` : ST.form && ST.form.editNo ? `แก้ไข ${ST.form.editNo}` : 'ขอเบิกค่าเดินทาง';
   $('#view').innerHTML = v;
@@ -239,8 +250,8 @@ function trialBanner() {
 
 // ===== views =====
 function vMore() {
-  const items = nav().filter(([k]) => !['home', 'inbox', 'clear', 'new'].includes(k));
-  return `<div class="stack">${items.map(([k, i, l, soon]) => `<button class="card kpi" style="flex-direction:row;align-items:center;gap:12px" data-act="go" data-v="${k}">${ms(i)}<b style="font-weight:600">${l}</b>${soon ? '<span class="pill p-mute" style="margin-left:auto">เร็วๆ นี้</span>' : ''}</button>`).join('')}</div>`;
+  const items = nav().filter(([k]) => !(isCeo() ? ['home', 'ceoq', 'claims', 'report'] : ['home', 'inbox', 'clear', 'new']).includes(k));
+  return `<div class="stack">${items.map(([k, i, l, soon]) => `<button class="card kpi" style="flex-direction:row;align-items:center;gap:12px" data-act="${k === 'tvView' ? 'tvView' : 'go'}" data-v="${k}">${ms(i)}<b style="font-weight:600">${l}</b>${soon ? '<span class="pill p-mute" style="margin-left:auto">เร็วๆ นี้</span>' : ''}</button>`).join('')}</div>`;
 }
 function vProfile() {
   const me = ST.me;
@@ -254,12 +265,13 @@ function vProfile() {
 
 // ---------- settings ----------
 function vSettings() {
-  const tabs = [['general', 'tune', 'ค่าทั่วไป'], ['users', 'group', 'ผู้ใช้และเลขบัญชี'], ['history', 'history', 'ประวัติ']];
+  const tabs = [['general', 'tune', 'ค่าทั่วไป'], ['users', 'group', 'ผู้ใช้และเลขบัญชี'], ['display', 'tv', 'จอแสดงผล'], ['history', 'history', 'ประวัติ']];
   if (ST.trialMode && isCust()) tabs.push(['trial', 'science', 'โหมดทดลองใช้']);
   if (!tabs.some((t) => t[0] === ST.setTab)) ST.setTab = 'general';
   const t = `<div class="tabs" role="tablist">${tabs.map(([k, i, l]) => `<button role="tab" class="${ST.setTab === k ? 'on' : ''}" data-act="setTab" data-v="${k}" ${k === 'trial' ? 'style="color:var(--bad)"' : ''}>${ms(i)}${l}</button>`).join('')}</div>`;
   if (ST.setTab === 'users') return t + vUsers();
   if (ST.setTab === 'history') return t + vHistory();
+  if (ST.setTab === 'display') return t + vDisplays();
   if (ST.setTab === 'trial') return t + vTrial();
   return t + vGeneral();
 }
@@ -327,7 +339,7 @@ function bankForm(target, m) {
 function vUsers() {
   if (!ST.members) { loadMembers(); return `<div class="loading" style="padding:40px"><div class="spin"></div></div>`; }
   const admins = ST.members.filter((m) => m.role === 'admin');
-  const sel = (m) => `<select class="sel" aria-label="สิทธิ์ C2-Pay ของ ${esc(m.name)}" data-role="${m.id}">${['admin', 'ceo', 'user', 'none'].map((r) => `<option value="${r}" ${m.role === r ? 'selected' : ''}>${ROLE_LABEL[r]}</option>`).join('')}</select>`;
+  const sel = (m) => `<select class="sel" aria-label="สิทธิ์ C2-Pay ของ ${esc(m.name)}" data-role="${m.id}">${['admin', 'ceo', 'user', 'guest', 'none'].map((r) => `<option value="${r}" ${m.role === r ? 'selected' : ''}>${ROLE_LABEL[r]}</option>`).join('')}</select>`;
   const bankLine = (m) => {
     if (m.role !== 'user' && m.role !== 'admin' && !m.bank) return '';
     if (!m.bank) return `${m.role === 'user' ? '<span class="pill p-over">ยังไม่มีบัญชีรับโอน</span>' : ''}${isCust() ? `<button class="btn sm" data-act="bankEdit" data-v="${m.id}">${ms('add')}เพิ่มเลขบัญชี</button>` : ''}`;
@@ -347,7 +359,8 @@ function vUsers() {
     <div class="stack">${custCard}
       <div class="card"><h3>${ms('shield_person')}สิทธิ์ใน C2-Pay</h3><div class="lines">
         <div><span><b>Admin</b><br><span class="f">สร้าง/อนุมัติ/จ่าย/เคลียร์ เงินสดย่อย ตั้งค่า และตั้งสิทธิ์</span></span></div>
-        <div><span><b>CEO</b><br><span class="f">ดูได้ทุกหน้า ค้นหา ส่งออก · ไม่ทำรายการเงิน</span></span></div>
+        <div><span><b>CEO</b><br><span class="f">ดูได้ทุกหน้า · อนุมัติ/ไม่อนุมัติใบเสนอผ่านแอป (ยืนยันรหัสผ่าน) · ไม่ทำรายการเงินอื่น</span></span></div>
+        <div><span><b>Guest</b><br><span class="f">เห็นเฉพาะหน้าจอสรุปการเงิน (เหมาะกับจอทีวี) · ทำรายการใดๆ ไม่ได้</span></span></div>
         <div><span><b>User</b><br><span class="f">ขอเบิกและเคลียร์ทริปของตัวเอง · ต้องมีบัญชีรับโอน</span></span></div>
         <div><span><b>ไม่มีสิทธิ์</b><br><span class="f">เข้าระบบได้ แต่เห็นข้อความให้ติดต่อ Admin</span></span></div></div></div></div></div>`;
 }
@@ -357,7 +370,7 @@ window.addEventListener('resize', fitPrint);
 
 function vHistory() {
   if (!ST.bankLog) { loadHistory(); return `<div class="loading" style="padding:40px"><div class="spin"></div></div>`; }
-  const T = { setup: 'ตั้งค่าเริ่มต้น C2-Pay', role: 'เปลี่ยนสิทธิ์', handover: 'ส่งต่อสิทธิ์ผู้ดูแลเลขบัญชี', trialClear: 'ล้างข้อมูลช่วงทดลอง', trialEnd: 'ปิดโหมดทดลอง · เริ่มใช้งานจริง', trvDelete: 'ลบใบเบิก (โหมดทดลอง)' };
+  const T = { setup: 'ตั้งค่าเริ่มต้น C2-Pay', role: 'เปลี่ยนสิทธิ์', handover: 'ส่งต่อสิทธิ์ผู้ดูแลเลขบัญชี', trialClear: 'ล้างข้อมูลช่วงทดลอง', trialEnd: 'ปิดโหมดทดลอง · เริ่มใช้งานจริง', trvDelete: 'ลบใบเบิก (โหมดทดลอง)', apvCeoApp: 'CEO อนุมัติใบเสนอผ่านแอป', apvCeoReject: 'CEO ไม่อนุมัติใบเสนอทั้งใบ', dispPair: 'จับคู่จอแสดงผล', dispRevoke: 'ยกเลิกจอแสดงผล' };
   const ad = (x) => x.type === 'role' ? `${esc(x.detail.name)} → ${ROLE_SHORT[x.detail.role] || ''}` : x.type === 'handover' ? `ให้ ${esc(x.detail.toName)}` : x.type === 'trialClear' ? `แบบ ${esc(x.detail.scope)}` : x.type === 'trvDelete' ? `${esc(x.detail.no)} · ${esc(x.detail.title)} · ${esc(x.detail.staffName)}` : '';
   return `<div class="grid g2"><div class="card"><h3>${ms('history')}ประวัติการแก้เลขบัญชี<span class="r">ลบไม่ได้</span></h3><div class="lines">
       ${ST.bankLog.length ? ST.bankLog.map((x) => `<div><span><b>${esc(x.targetName)}</b>${x.self ? ' <span class="pill p-pending">แก้บัญชีตัวเอง</span>' : ''}<br><span class="f">${x.from ? `${esc(x.from)} → ` : 'เพิ่มครั้งแรก '}${esc(x.to)}<br>โดย ${esc(x.byName)} · ${dtTime(x.at)} · "${esc(x.reason)}"</span></span>${x.file ? `<button class="btn sm ghost" data-act="fileView" data-v="${esc(x.file)}">${ms('image')}</button>` : ''}</div>`).join('') : '<div class="empty">ยังไม่มีประวัติ</div>'}</div></div>
@@ -775,6 +788,7 @@ function vPayq() {
 function drawBatch(no) {
   const b = ST.apv && ST.apv.batches.find((x) => x.no === no); if (!b) return;
   ST.openBatch = no; const ad = isAdmin();
+  if (isCeo() && b.status === 'ceo') { drawCeo(b); return; }
   const list = b.items.map((x) => `<div style="display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-top:1px solid var(--line)">${b.status === 'ceo' && ad ? `<input type="checkbox" class="chk" data-keep="${esc(x.id)}" checked aria-label="CEO อนุมัติ ${esc(x.title)}">` : ''}<span style="flex:1;min-width:0"><span class="kind">${kindLabel(x)}</span> ${x.ref ? `<span class="num" style="font-size:12.5px">${esc(x.ref)}</span>` : ''}<br>${esc(x.title)}<br><small style="color:var(--sub)">${esc(x.payee)} · ${bankLine(x)}</small>${b.status === 'ceo' && ad ? `<div class="field" data-noteof="${esc(x.id)}" hidden style="margin-top:6px"><input class="inp" id="kn-${esc(x.id)}" placeholder="สิ่งที่ CEO ให้แก้ (ถ้ามี)"></div>` : ''}</span><b class="num">${fmt(x.amount)}</b></div>`).join('');
   const dropped = (b.dropped || []).length ? `<div class="card"><h3>${ms('undo')}CEO ไม่อนุมัติ (กลับไปรอ)</h3>${b.dropped.map((x) => `<div style="padding:6px 0;border-top:1px solid var(--line)"><span class="kind">${kindLabel(x)}</span> ${esc(x.ref || '')} · ${esc(x.title)} · <b class="num">${fmt(x.amount)}</b>${x.ceoNote ? `<br><small style="color:var(--warn)">ให้แก้: ${esc(x.ceoNote)}</small>` : ''}</div>`).join('')}</div>` : '';
   let act = '';
@@ -786,7 +800,7 @@ function drawBatch(no) {
     <div class="db">${b.status === 'cancelled' ? (b.cancelNote ? `<div class="banner bad">${ms('block')}<span>ยกเลิก: ${esc(b.cancelNote)}</span></div>` : '') : stepper(b.status)}
       <div class="money3" style="grid-template-columns:1fr"><div class="hl"><small>ยอดรวม ${b.items.length} รายการ</small><b>${fmt(b.total)}</b><small>(${bahtText(b.total)})</small></div></div>
       ${b.status === 'cancelled' ? '' : `<button class="btn ${b.status === 'ceo' ? 'pri' : ''} block" data-act="apvPrint" data-v="${b.no}">${ms('print')}พิมพ์ใบเสนอ CEO (A4)</button>`}
-      <div class="card"><h3>${ms('list_alt')}รายการ</h3>${list}</div>${dropped}
+      ${apvWho(b, ad)}<div class="card"><h3>${ms('list_alt')}รายการ</h3>${list}</div>${dropped}
       ${b.scan || b.slip ? `<div class="card"><h3>${ms('attach_file')}หลักฐาน</h3><div style="display:flex;gap:6px;flex-wrap:wrap">${fileBtn(b.scan, 'ใบที่ CEO เซ็น')}${fileBtn(b.slip, 'สลิปการโอน')}</div>${b.bankRef ? `<p class="formula" style="margin:8px 0 0">อ้างอิงธนาคาร: ${esc(b.bankRef)}</p>` : ''}</div>` : ''}
       <div class="card"><h3>${ms('history')}ความเคลื่อนไหว</h3><ul class="tl">${b.timeline.map((t) => `<li>${esc(t.text)}${t.amt != null ? ` · <b class="num">${fmt(t.amt)}</b>` : ''}<small>${dtTime(t.at)} · ${esc(t.byName)}</small></li>`).join('')}</ul></div>
     </div>${act ? `<div class="df">${act}</div>` : ''}`);
@@ -820,7 +834,8 @@ function detailOf(x, d, pcr, idx) {
 }
 async function apvPrint(no) {
   const r = await api('apvGet', { no }); const b = r.batch;
-  const rows = b.items.map((x, i) => `<tr><td>${i + 1}</td><td>${esc(kindLabel(x))}${x.ref ? ` · ${esc(x.ref)}` : ''}<br><small>${esc(x.title)}</small></td><td>${esc(x.payee)}<br><small>${x.external ? 'ตามใบแจ้งหนี้' : x.bank ? `${esc(x.bank.bank)} ${esc(x.bank.no)}` : ''}</small>${x.bankPending ? `<br><span style="font-size:11.5px;color:#9A3B30">* บัญชีเพิ่งเปลี่ยน ${x.bank && x.bank.changedAt ? thDate(x.bank.changedAt.slice(0, 10)) : ''} · ยืนยันกับเจ้าตัวแล้ว</span>` : ''}</td><td style="text-align:right">${fmt(x.amount)}</td><td style="text-align:center"><span class="box"></span></td></tr>`).join('');
+  const rows = b.items.map((x, i) => `<tr><td>${i + 1}</td><td>${esc(kindLabel(x))}${x.ref ? ` · ${esc(x.ref)}` : ''}<br><small>${esc(x.title)}</small></td><td>${esc(x.payee)}<br><small>${x.external ? 'ตามใบแจ้งหนี้' : x.bank ? `${esc(x.bank.bank)} ${esc(x.bank.no)}` : ''}</small>${x.bankPending ? `<br><span style="font-size:11.5px;color:#9A3B30">* บัญชีเพิ่งเปลี่ยน ${x.bank && x.bank.changedAt ? thDate(x.bank.changedAt.slice(0, 10)) : ''} · ยืนยันกับเจ้าตัวแล้ว</span>` : ''}</td><td style="text-align:right">${fmt(x.amount)}</td><td style="text-align:center">${b.ceoApp ? '<b style="color:#2E7D4F">✓</b>' : '<span class="box"></span>'}</td></tr>`).join('')
+    + (b.dropped || []).map((x) => `<tr class="drop"><td>–</td><td><s>${esc(kindLabel(x))}${x.ref ? ` · ${esc(x.ref)}` : ''}</s><br><small>${esc(x.title)}${x.ceoNote ? ` · CEO: ${esc(x.ceoNote)}` : ''}</small></td><td><s>${esc(x.payee)}</s></td><td style="text-align:right"><s>${fmt(x.amount)}</s></td><td style="text-align:center;color:#B83A30;font-size:11px">ไม่อนุมัติ</td></tr>`).join('');
   const p1 = `<div class="a4">${a4Head('บริษัท ซีทูเทค จำกัด', '99/3 หมู่ 9 ต.วังไก่เถื่อน อ.หันคา จ.ชัยนาท 17130', `<b>ใบเสนออนุมัติเบิกจ่าย</b>เลขที่ ${b.no}<br>วันที่ ${thDate(b.date)}`)}
     <p style="margin:0 0 12px;line-height:1.7">เรียน ประธานเจ้าหน้าที่บริหาร (CEO)<br>ขออนุมัติเบิกจ่ายตามรายการด้านล่าง โดยโอนเงินจากบัญชีบริษัท</p>
     <table style="width:100%;border-collapse:collapse"><thead><tr><th style="width:26px">ที่</th><th style="text-align:left">รายการ</th><th style="text-align:left">ผู้รับเงิน / บัญชี</th><th style="text-align:right">จำนวนเงิน</th><th style="width:52px">CEO<br>อนุมัติ</th></tr></thead><tbody>${rows}</tbody>
@@ -828,7 +843,7 @@ async function apvPrint(no) {
     <div class="words">(${bahtText(b.total)})</div>
     <div style="font-size:12px;color:#4a4a48">เอกสารแนบ: รายละเอียดแต่ละรายการ (หน้าถัดไป) · รายการที่จ่ายจากเงินสดย่อยไม่อยู่ในใบนี้${r.fullBank ? '' : ' · เลขบัญชีแสดงบางส่วน (ให้ผู้ดูแลเลขบัญชีพิมพ์เพื่อแสดงเต็ม)'}</div>
     <div style="font-size:12.5px;margin-top:14px">หมายเหตุ CEO: ...........................................................................................................................</div>
-    <div class="signs"><div class="sign"><b>ผู้จัดทำ</b><div class="ln">( ${esc(b.createdByName)} )</div><small>วันที่ ......../......../........</small></div><div class="sign"><b>CEO อนุมัติ</b><div class="ln">( .............................................. )</div><small>วันที่ ......../......../........</small></div></div>
+    <div class="signs"><div class="sign"><b>ผู้จัดทำ</b><div class="ln">( ${esc(b.createdByName)} )</div><small>วันที่ ......../......../........</small></div>${b.ceoApp ? `<div class="sign"><b>CEO อนุมัติ</b><span class="estamp">✓ อนุมัติทางอิเล็กทรอนิกส์<br>${esc(b.ceoApp.name)}<br>${thDate(b.ceoApp.at.slice(0, 10))} · ${new Date(b.ceoApp.at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' })} น.</span></div>` : `<div class="sign"><b>CEO อนุมัติ</b><div class="ln">( .............................................. )</div><small>วันที่ ......../......../........</small></div>`}</div>${b.ceoApp ? `<div class="eref">CEO ยืนยันตัวตนด้วยรหัสผ่านในระบบ C2-Pay · รหัสอ้างอิง ${esc(b.ceoApp.ref)}</div>` : ''}
     <div class="pfoot"><span>C2-Pay · ${b.no}</span><span>หน้า 1</span></div></div>`;
   const p2 = `<div class="a4">${a4Head('รายละเอียดประกอบใบเสนอ', `${b.no} · ${b.items.length} รายการ · รวม ${fmt(b.total)} บาท`, '<b>รายละเอียด</b>')}${b.items.map((x, i) => detailOf(x, r.docs[x.ref], r.pcr, i)).join('')}<div class="pfoot"><span>C2-Pay · ${b.no}</span><span>หน้า 2</span></div></div>`;
   let pv = $('#printv'); if (!pv) { pv = document.createElement('div'); pv.id = 'printv'; pv.className = 'printv'; document.body.appendChild(pv); }
@@ -1389,6 +1404,7 @@ document.addEventListener('click', async (e) => {
     if (a === 'mini') { $('#app').classList.toggle('mini'); return; }
     if (a === 'refresh') return busy(b, async () => { if (await reloadMe()) { ST.members = null; ST.bankLog = null; ST.wiz.counts = null; ST.draft = null; ST.trv = null; ST.payq = null; ST.pc = null; ST.ledger = null; ST.apv = null; render(); toast('โหลดข้อมูลใหม่แล้ว'); } });
     if (await trvClick(a, v, b)) return;
+    if (await r5Click(a, v, b)) return;
     if (a === 'ackNotice') return busy(b, async () => { await api('ackNotice'); ST.me.bankNotice = null; render(); });
     if (a === 'setTab') { ST.setTab = v; ST.bankEdit = null; if (v === 'trial') { ST.wiz = { step: 1, scope: 'A', counts: null, dl: { json: false, xlsx: false } }; backupCache = null; } if (v === 'history') ST.bankLog = null; render(); return; }
     // settings
@@ -1793,6 +1809,262 @@ document.addEventListener('input', (e) => {
 });
 document.addEventListener('change', (e) => { const el = e.target; if (el.dataset.def && ST.draft) ST.draft.defaults[el.dataset.def] = el.value; });
 document.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.id === 'cat-new') { e.preventDefault(); $('[data-act="catAdd"]').click(); } });
+
+// ======================================================================
+// รอบ 5: CEO อนุมัติในแอป · จอแสดงผล (TV) / Guest
+// ======================================================================
+function vCeoq() {
+  if (!ST.apv) { loadApv(); return `<div class="loading" style="padding:40px"><div class="spin"></div></div>`; }
+  const wait = ST.apv.batches.filter((b) => b.status === 'ceo');
+  const done = ST.apv.batches.filter((b) => b.ceoAt || b.ceoReject).slice(0, 8);
+  const card = (b) => `<div class="card bcard"><div class="row"><b class="num">${b.no}</b><span class="pill p-pending">รอ CEO</span><span class="sp num" style="font-weight:700;font-size:17px">${fmt(b.total)}</span></div>${stepper(b.status)}
+    <small style="color:var(--sub)">${b.items.length} รายการ · ${esc(b.createdByName || '')} สร้างเมื่อ ${dtTime(b.createdAt)}</small>
+    <button class="btn pri block" style="margin-top:10px" data-act="openBatch" data-v="${b.no}">${ms('verified')}ตรวจและอนุมัติ</button></div>`;
+  const row = (b) => `<button class="card bcard" style="text-align:left" data-act="openBatch" data-v="${b.no}"><div class="row"><b class="num">${b.no}</b>${b.ceoReject ? '<span class="pill p-mute">ไม่อนุมัติทั้งใบ</span>' : `<span class="pill p-closed">อนุมัติแล้ว${b.ceoApp ? ' · ผ่านแอป' : ' · เซ็นเอกสาร'}</span>`}<span class="sp num" style="font-weight:700">${fmt(b.total)}</span></div>
+    <small style="color:var(--sub)">${b.ceoReject ? `${dtTime(b.ceoReject.at)} · ${esc(b.ceoReject.note)}` : `${dtTime(b.ceoAt)} · ${STAGE[b.status]}`}</small></button>`;
+  return `<div class="grid g2" style="align-items:start"><div class="stack"><h3 class="sech">${ms('pending_actions')}รอ CEO อนุมัติ · ${wait.length}</h3>${wait.length ? wait.map(card).join('') : '<div class="card empty">ไม่มีใบเสนอรออนุมัติ</div>'}</div>
+    <div class="stack"><h3 class="sech">${ms('history')}ตัดสินใจล่าสุด</h3>${done.length ? done.map(row).join('') : '<div class="card empty">ยังไม่มี</div>'}</div></div>`;
+}
+
+function apvWho(b, ad) {
+  if (b.ceoApp) return `<div class="banner good">${ms('verified')}<span><b>CEO อนุมัติผ่านแอป</b> · ${esc(b.ceoApp.name)} · ${dtTime(b.ceoApp.at)}<br><small>รหัสอ้างอิง ${esc(b.ceoApp.ref)} · ยืนยันตัวตนด้วยรหัสผ่าน</small></span></div>`;
+  if (ad && b.status === 'ceo') return `<div class="card ceo2"><h3>${ms('alt_route')}CEO อนุมัติได้ 2 ทาง</h3>
+    <div class="opt2">${ms('smartphone')}<span><b>ทาง A · CEO กดในแอป</b><small>ไม่ต้องพิมพ์ · CEO เห็นใบนี้ในเมนู "รออนุมัติ" แล้ว</small></span></div>
+    <div class="opt2">${ms('print')}<span><b>ทาง B · พิมพ์ให้เซ็น แล้วแนบสแกน</b><small>พิมพ์ A4 → CEO เซ็น → แนบรูปด้านล่าง → ติ๊กรายการ → กดยืนยัน</small></span></div></div>`;
+  return '';
+}
+
+function drawCeo(b) {
+  ST.ceoDrop = new Set();
+  const list = b.items.map((x, i) => `<div class="ceoit" data-ci="${esc(x.id)}"><div class="ceoit-h"><span style="flex:1;min-width:0">${x.type && x.type !== 'PC' ? tpill(x.type) + ' ' : ''}<b>${esc(x.title)}</b>
+      <small>${esc(kindLabel(x))}${x.ref ? ` · <span class="num">${esc(x.ref)}</span>` : ''} · ${esc(x.payee)}${x.external ? ' · ตามใบแจ้งหนี้' : x.bank ? ` · ${esc(x.bank.bank)} <span class="num">${esc(x.bank.no)}</span>` : ''}</small></span><b class="num">${fmt(x.amount)}</b></div>
+      <div class="seg" role="group" aria-label="การตัดสินใจ ${esc(x.title)}"><button class="on ok" data-act="ceoTog" data-v="${esc(x.id)}" data-k="ok" aria-pressed="true">${ms('check')}อนุมัติ</button><button class="no" data-act="ceoTog" data-v="${esc(x.id)}" data-k="no" aria-pressed="false">${ms('close')}ไม่อนุมัติ/ให้แก้</button></div>
+      <div class="field cnote" hidden><label for="cn-${i}">เหตุผล / สิ่งที่ให้แก้</label><input class="inp" id="cn-${i}" data-cnote="${esc(x.id)}" maxlength="200" placeholder="เช่น ขอใบเสนอราคาเปรียบเทียบ"></div></div>`).join('');
+  openDrawer(`<div class="dh"><div><div style="display:flex;gap:8px;align-items:center"><span class="tpill t-PC">APV</span><span class="pill p-pending">รอ CEO อนุมัติ</span></div><h2 class="num">${b.no}</h2></div><button class="btn sm ghost x" data-act="closeDrawer" aria-label="ปิด">${ms('close')}</button></div>
+    <div class="db">${stepper(b.status)}
+      <div class="money3" style="grid-template-columns:1fr"><div class="hl"><small>ยอดรวม ${b.items.length} รายการ</small><b>${fmt(b.total)}</b><small>(${bahtText(b.total)})</small></div></div>
+      <button class="btn block" data-act="apvPrint" data-v="${b.no}">${ms('description')}ดูรายละเอียดทุกรายการ (ใบเสนอ A4)</button>
+      <div class="card"><h3>${ms('rule')}เลือกอนุมัติทีละรายการ</h3>${list}</div>
+      <div class="card ceosum" id="ceoSum"></div>
+    </div><div class="df"><button class="btn pri block" data-act="ceoApprove" id="ceoOk">${ms('verified')}อนุมัติ</button><button class="btn dout block" data-act="ceoRejectAsk">${ms('block')}ไม่อนุมัติทั้งใบ</button></div>`);
+  ceoSum(b);
+}
+function ceoSum(b) {
+  b = b || (ST.apv && ST.apv.batches.find((x) => x.no === ST.openBatch)); if (!b) return;
+  const kept = b.items.filter((x) => !ST.ceoDrop.has(x.id)), amt = kept.reduce((t, x) => t + x.amount, 0);
+  $('#ceoSum').innerHTML = `<div class="row"><span>อนุมัติ <b>${kept.length}</b> จาก ${b.items.length} รายการ${ST.ceoDrop.size ? ` · ไม่อนุมัติ ${ST.ceoDrop.size}` : ''}</span><b class="sp num">${fmt(amt)} บาท</b></div>`;
+  const ok = $('#ceoOk'); ok.innerHTML = `${ms('verified')}อนุมัติ ${kept.length} รายการ · ${fmt(amt)} บาท`; ok.disabled = !kept.length;
+}
+
+/** แผ่นยืนยันรหัสผ่าน (ใช้แทนลายเซ็น) — run(password, reason) โยน error = แสดงในแผ่น ไม่ปิด */
+function pwSheet(o, run) {
+  $('#psh')?.remove();
+  const w = document.createElement('div'); w.id = 'psh'; w.className = 'psh-wrap';
+  w.innerHTML = `<div class="psh" role="dialog" aria-modal="true" aria-labelledby="psh-t"><b id="psh-t">${esc(o.title)}</b><p>${o.desc}</p>
+    ${o.reason ? `<div class="field"><label for="psh-r">${esc(o.reason)}</label><textarea class="inp" id="psh-r" rows="2" maxlength="200"></textarea></div>` : ''}
+    <div class="field"><label for="psh-pw">รหัสผ่าน C2-Calendar ของคุณ</label><input class="inp" id="psh-pw" type="password" autocomplete="current-password"></div>
+    <div class="err" id="psh-err" role="alert"></div>
+    <button class="btn ${o.danger ? 'danger' : 'pri'} block" id="psh-ok" style="height:44px">${ms(o.icon || 'draw')}${esc(o.btn)}</button><button class="btn ghost block" id="psh-x">ยกเลิก</button></div>`;
+  document.body.appendChild(w);
+  const close = () => { w.remove(); document.removeEventListener('keydown', esc_); };
+  const esc_ = (e) => { if (e.key === 'Escape') close(); };
+  document.addEventListener('keydown', esc_);
+  w.addEventListener('click', (e) => { if (e.target === w) close(); });
+  $('#psh-x', w).onclick = close;
+  const go = async () => {
+    const r = o.reason ? $('#psh-r', w).value.trim() : '', pw = $('#psh-pw', w).value;
+    if (o.reason && !r) { $('#psh-err', w).textContent = `กรอก${o.reason}`; $('#psh-r', w).focus(); return; }
+    if (!pw) { $('#psh-err', w).textContent = 'ใส่รหัสผ่านเพื่อยืนยัน'; $('#psh-pw', w).focus(); return; }
+    await busy($('#psh-ok', w), async () => { try { await run(pw, r); close(); } catch (e) { $('#psh-err', w).textContent = errMsg(e); $('#psh-pw', w).value = ''; $('#psh-pw', w).focus(); } });
+  };
+  $('#psh-ok', w).onclick = go;
+  $('#psh-pw', w).addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
+  (o.reason ? $('#psh-r', w) : $('#psh-pw', w)).focus();
+}
+
+// ----- ตั้งค่า → จอแสดงผล -----
+async function loadDisp() { try { ST.disp = await api('dispList'); } catch (e) { fail(e); ST.disp = { list: [], now: Date.now() }; } render(); }
+function vDisplays() {
+  if (!ST.disp) { loadDisp(); return `<div class="loading" style="padding:40px"><div class="spin"></div></div>`; }
+  const L = ST.disp.list, now = Date.now();
+  const on = (x) => x.lastSeen && now - Date.parse(x.lastSeen) < 7 * 60000;
+  const row = (x) => `<div class="drow"><span class="dic">${ms('tv')}</span><span style="flex:1;min-width:0"><b>${esc(x.name)}</b>
+      <small>${on(x) ? '<span class="pill p-closed">ออนไลน์</span>' : '<span class="pill p-mute">ออฟไลน์</span>'} ${x.lastSeen ? `${on(x) ? 'อัปเดตล่าสุด' : 'เห็นล่าสุด'} ${dtTime(x.lastSeen)}` : 'ยังไม่เคยเชื่อมต่อ'}</small><small>จับคู่ ${dtTime(x.createdAt)} โดย ${esc(x.byName)}</small></span>
+      <button class="btn sm dout" data-act="dispRevoke" data-v="${x.id}">${ST.dispAsk === x.id ? 'ยืนยันยกเลิก' : 'ยกเลิกจอ'}</button></div>`;
+  return `<div class="grid g2" style="align-items:start"><div class="card"><h3>${ms('add_to_queue')}เพิ่มจอใหม่</h3>
+      <ol class="steps-l"><li>เปิด C2-Pay บนทีวี กด <b>"ใช้เป็นจอแสดงผล (TV)"</b></li><li>พิมพ์รหัส 6 หลักที่ขึ้นบนทีวี แล้วตั้งชื่อจอ</li></ol>
+      <div class="fgrid" style="grid-template-columns:1fr"><div class="field"><label for="dp-code">รหัส 6 หลักที่ขึ้นบนทีวี</label><input class="inp otp" id="dp-code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="000000"></div>
+      <div class="field"><label for="dp-name">ตั้งชื่อจอ</label><input class="inp" id="dp-name" maxlength="40" placeholder="เช่น ทีวีห้องประชุม"></div></div>
+      <button class="btn pri block" style="margin-top:10px" data-act="dispPair">${ms('link')}จับคู่จอนี้</button>
+      <p class="formula" style="margin:8px 0 0">${ms('lock', 'style="font-size:15px;vertical-align:-3px"')} จอแสดงผลดูได้แค่หน้าสรุป ไม่เห็นเลขบัญชีหรือไฟล์แนบ และทำรายการอะไรไม่ได้ · ไม่ต้องสร้างบัญชีใน C2-Calendar</p></div>
+    <div class="stack"><div class="card"><h3>${ms('tv')}จอที่จับคู่แล้ว<span class="r">${L.length} จอ</span></h3>${L.length ? L.map(row).join('') : '<div class="empty" style="padding:14px">ยังไม่มีจอ</div>'}</div>
+      <button class="btn block" data-act="tvView">${ms('open_in_full')}ดูตัวอย่างหน้าจอสรุป</button></div></div>`;
+}
+
+async function r5Click(a, v, b) {
+  if (a === 'ceoTog') {
+    const it = b.closest('.ceoit'), no = b.dataset.k === 'no';
+    if (no) ST.ceoDrop.add(v); else ST.ceoDrop.delete(v);
+    it.querySelectorAll('.seg button').forEach((x) => { const o = x.dataset.k === (no ? 'no' : 'ok'); x.classList.toggle('on', o); x.setAttribute('aria-pressed', String(o)); });
+    it.classList.toggle('dropped', no); const f = it.querySelector('.cnote'); f.hidden = !no; if (no) f.querySelector('input').focus();
+    ceoSum(); return true;
+  }
+  if (a === 'ceoApprove') {
+    const bt = ST.apv.batches.find((x) => x.no === ST.openBatch); if (!bt) return true;
+    const keep = bt.items.filter((x) => !ST.ceoDrop.has(x.id)).map((x) => x.id);
+    if (!keep.length) { toast('ไม่มีรายการที่อนุมัติ · ถ้าไม่อนุมัติทั้งใบ กด "ไม่อนุมัติทั้งใบ"', 'error'); return true; }
+    const notes = {}, chk = [];
+    document.querySelectorAll('[data-cnote]').forEach((el) => { if (ST.ceoDrop.has(el.dataset.cnote)) { notes[el.dataset.cnote] = el.value.trim(); chk.push([el, 'เหตุผลที่ไม่อนุมัติ']); } });
+    if (chk.length && !need(chk)) return true;
+    const amt = bt.items.filter((x) => keep.includes(x.id)).reduce((t, x) => t + x.amount, 0);
+    pwSheet({ title: 'ยืนยันการอนุมัติ', desc: `อนุมัติ <b>${keep.length}</b> รายการ <b class="num">${fmt(amt)}</b> บาท${ST.ceoDrop.size ? ` · ไม่อนุมัติ ${ST.ceoDrop.size} รายการ` : ''}<br>การกดยืนยันมีผลแทนลายเซ็นบนใบเสนอ`, btn: 'ยืนยันและลงนามอิเล็กทรอนิกส์', icon: 'draw' },
+      async (password) => { const r = await api('apvCeoApp', { no: bt.no, keep, notes, password }); await loadApv(); drawBatch(bt.no); toast(`อนุมัติ ${bt.no} แล้ว · ${r.kept} รายการ${r.dropped ? ` · ${r.dropped} รายการกลับไปรอ` : ''}`, 'verified'); });
+    return true;
+  }
+  if (a === 'ceoRejectAsk') {
+    const no = ST.openBatch;
+    pwSheet({ title: 'ไม่อนุมัติทั้งใบ', desc: `ใบเสนอ <b class="num">${esc(no)}</b> จะถูกยกเลิก ทุกรายการกลับไปรอเข้าใบเสนอใหม่ พร้อมเหตุผลของคุณให้ Admin เห็น`, reason: 'เหตุผลที่ไม่อนุมัติ', btn: 'ยืนยันไม่อนุมัติทั้งใบ', icon: 'block', danger: true },
+      async (password, note) => { await api('apvCeoReject', { no, note, password }); await loadApv(); closeDrawer(); render(); toast(`ไม่อนุมัติ ${no} แล้ว · รายการกลับไปรอ`, 'block'); });
+    return true;
+  }
+  if (a === 'dispPair') {
+    const code = $('#dp-code').value.replace(/\D/g, '');
+    if (!need([['#dp-code', 'รหัส 6 หลัก', () => code.length === 6 ? '' : 'รหัสต้องเป็นตัวเลข 6 หลัก'], ['#dp-name', 'ชื่อจอ']])) return true;
+    await busy(b, async () => { const r = await api('dispPair', { code, name: $('#dp-name').value.trim() }); ST.disp = null; render(); toast(`จับคู่ "${r.name}" แล้ว · ทีวีจะเปลี่ยนเป็นหน้าสรุปในไม่กี่วินาที`, 'tv'); });
+    return true;
+  }
+  if (a === 'dispRevoke') {
+    if (ST.dispAsk !== v) { ST.dispAsk = v; render(); return true; }
+    await busy(b, async () => { await api('dispRevoke', { id: v }); ST.dispAsk = null; ST.disp = null; render(); toast('ยกเลิกจอแล้ว · ทีวีจะกลับไปหน้าเข้าสู่ระบบในรอบอัปเดตถัดไป', 'tv_off'); });
+    return true;
+  }
+  if (a === 'tvView') { closeDrawer(); startTV('preview'); return true; }
+  return false;
+}
+
+// ----- จอแสดงผล (TV) -----
+const DKEY = 'c2pay_dtoken';
+const getD = () => { try { return localStorage.getItem(DKEY); } catch (e) { return null; } };
+const setD = (t) => { try { if (t) localStorage.setItem(DKEY, t); else localStorage.removeItem(DKEY); } catch (e) { /* ไม่เป็นไร */ } };
+const TV_REFRESH_MS = 5 * 60 * 1000;
+const TV = { mode: null, data: null, at: 0, err: '', timers: [] };
+const tvEl = () => { let el = $('#tv'); if (!el) { el = document.createElement('div'); el.id = 'tv'; el.className = 'tvx'; document.body.appendChild(el); } return el; };
+function tvClear() { TV.timers.forEach((t) => clearInterval(t)); TV.timers = []; }
+function stopTV() { tvClear(); TV.mode = null; TV.data = null; $('#tv')?.remove(); document.documentElement.classList.remove('tv-on'); }
+async function tvCall(action, data = {}) {
+  if (TV.mode === 'session' || TV.mode === 'preview') return api(action, data);
+  return (await FN.httpsCallable('payApi')({ ...data, action, ...(action === 'dispSummary' ? { dtoken: getD() } : {}) })).data;
+}
+async function startTV(mode) {
+  tvClear(); TV.mode = mode; TV.data = null; TV.err = '';
+  authEl().hidden = true; $('#stage').hidden = mode !== 'preview' ? true : $('#stage').hidden;
+  document.documentElement.classList.add('tv-on');
+  tvEl().innerHTML = `<div class="tvc"><div class="tv-load"><div class="spin"></div><span>กำลังโหลดสรุปการเงิน…</span></div></div>`; tvFit();
+  await tvRefresh();
+  TV.timers.push(setInterval(tvRefresh, TV_REFRESH_MS), setInterval(tvClock, 15000));
+}
+async function tvRefresh() {
+  if (!TV.mode) return;
+  try { TV.data = await tvCall('dispSummary'); TV.at = Date.now(); TV.err = ''; }
+  catch (e) {
+    if (TV.mode === 'display' && e && e.code === 'functions/unauthenticated') { setD(null); stopTV(); showLogin('จอนี้ถูกยกเลิกการจับคู่แล้ว · กด "ใช้เป็นจอแสดงผล (TV)" เพื่อจับคู่ใหม่'); return; }
+    if (e && e.silent) { stopTV(); return; }
+    TV.err = errMsg(e);
+  }
+  if (TV.mode) tvRender();
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden && TV.mode && Date.now() - TV.at > TV_REFRESH_MS) tvRefresh(); });
+window.addEventListener('resize', () => { if (TV.mode) tvFit(); });
+function tvFit() {
+  const el = $('#tv'); if (!el) return; const c = $('.tvc', el); if (!c) return;
+  const W = window.innerWidth, H = window.innerHeight, wide = W >= 1000 && W / H > 1.2;
+  el.classList.toggle('wide', wide); el.classList.toggle('narrow', !wide);
+  c.style.zoom = String(wide ? Math.min(W / 1920, H / 1080) : Math.min(1, W / 600));
+}
+function tvClock() {
+  const c = $('#tvClock'); if (!c) return;
+  const d = new Date(Date.now() + 7 * 3600e3), days = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
+  c.innerHTML = `<b class="num">${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}</b><small>${days[d.getUTCDay()]} ${d.getUTCDate()} ${MON[d.getUTCMonth()]} ${d.getUTCFullYear() + 543}</small>`;
+}
+const kfmt = (v) => v >= 1000 ? `${(v / 1000).toFixed(v >= 100000 ? 0 : 1).replace(/\.0$/, '')}k` : fmt(Math.round(v));
+const hhmm = (ms) => { const d = new Date(ms + 7 * 3600e3); return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`; };
+const range = (a, b) => !a ? '' : a === b || !b ? dt(a) : a.slice(0, 7) === b.slice(0, 7) ? `${Number(a.slice(8))}–${dt(b)}` : `${dt(a)} – ${dt(b)}`;
+function tvRender() {
+  const S = TV.data, el = tvEl();
+  if (!S) { el.innerHTML = `<div class="tvc"><div class="tv-load">${ms('cloud_off')}<span>โหลดข้อมูลไม่ได้ · ${esc(TV.err)}</span><small>ระบบจะลองใหม่อัตโนมัติ</small></div></div>`; tvFit(); return; }
+  const [y, m] = S.mon.split('-').map(Number), cur = m - 1;
+  const delta = S.month.prev > 0 ? Math.round((S.month.total - S.month.prev) / S.month.prev * 100) : null;
+  const kpi = (i, t, v, unit, f, tone) => `<div class="tk"><div class="t">${ms(i)}${t}</div><div class="v num ${tone || ''}">${v}<small>${unit}</small></div><div class="f">${f}</div></div>`;
+  const max = Math.max(1, ...S.months);
+  const bars = S.months.map((v, i) => `<div class="b ${i === cur ? 'cur' : ''}">${i <= cur && v ? `<em class="num">${kfmt(v)}</em>` : ''}<i style="height:${i <= cur ? Math.max(v ? 2 : 0, v / max * 100) : 0}%"></i></div>`).join('');
+  const cmax = Math.max(1, ...S.cats.map((c) => c[1]));
+  const cats = S.cats.length ? S.cats.map(([k, v]) => `<div class="hb"><span>${esc(k)}</span><div class="tr"><i style="width:${v / cmax * 100}%"></i></div><b class="num">${fmt(Math.round(v))}</b></div>`).join('') : '<div class="tv-empty">ยังไม่มีค่าใช้จ่ายเดือนนี้</div>';
+  const st = (n, l, a, hot, tone) => `<div class="st ${hot ? 'hot' : ''}"><div class="n num ${tone || ''}">${n}</div><div class="l">${l}</div><div class="a num">${a ? fmt(Math.round(a)) : '–'}</div></div>`;
+  const P = S.apv;
+  const TRIP = { submitted: ['p-w', 'รออนุมัติ'], returned: ['p-w', 'ส่งกลับแก้ไข'], approve: ['p-g', 'อนุมัติแล้ว · รอโอน'], open: ['p-g', 'ได้รับเงินแล้ว'], clearSub: ['p-i', 'ส่งเคลียร์แล้ว'], refund: ['p-w', 'รอคืนเงิน'], topup: ['p-w', 'รอจ่ายส่วนต่าง'] };
+  const trips = S.trips.list.length ? S.trips.list.map((t) => { const p = t.onTrip ? ['p-i', 'กำลังเดินทาง'] : TRIP[t.status] || ['p-m', '']; return `<div class="li"><span>${esc(t.title)}${t.place ? ` · ${esc(t.place.split(' · ').pop())}` : ''}</span><small>${esc(t.people.join(', '))} · ${range(t.go, t.back)}</small>${p[1] ? `<span class="tp ${p[0]}">${p[1]}</span>` : ''}</div>`; }).join('') : '<div class="tv-empty">ไม่มีทริปที่กำลังจะไป</div>';
+  const CL = { late: (n) => ['p-b', `เกินกำหนด ${n} วัน`], warn: (n) => ['p-w', `เหลือ ${n} วัน`], ok: (n) => ['p-m', `เหลือ ${n} วัน`], trip: () => ['p-i', 'ระหว่างทริป'] };
+  const clr = S.clear.list.length ? S.clear.list.map((c) => { const p = CL[c.lv](c.n); return `<div class="li"><span>${esc(c.title)}</span><small>${esc(c.staff)} · ${esc(c.no)} · ${fmt(c.amount)}</small><span class="tp ${p[0]}">${p[1]}</span></div>`; }).join('') : '<div class="tv-empty">ไม่มีใบค้างเคลียร์</div>';
+  const who = TV.mode === 'display' ? `${ms('tv')}${esc(S.display || 'จอแสดงผล')} · ดูอย่างเดียว` : TV.mode === 'preview' ? `${ms('visibility')}ตัวอย่างหน้าจอสรุป` : `${ms('visibility')}Guest · ดูอย่างเดียว`;
+  el.innerHTML = `<div class="tvc"><div class="tvw">
+    <header><img class="lg" src="img/icon-192.png" alt=""><div><h1>C2-Pay · สรุปการเงิน</h1><small>บริษัท ซีทูเทค จำกัด · ${MONTH_F[cur]} ${y + 543}</small></div>
+      <div class="ro">${who}</div>${S.trialMode ? `<div class="ro trial">${ms('science')}ช่วงทดลองใช้</div>` : ''}
+      <div class="clock" id="tvClock"></div>${TV.mode === 'session' ? `<button class="tvbtn" data-act="logout" title="ออกจากระบบ" aria-label="ออกจากระบบ">${ms('logout')}</button>` : TV.mode === 'preview' ? `<button class="tvbtn" data-act="tvExit" aria-label="ปิดหน้าจอสรุป">${ms('close')}</button>` : ''}</header>
+    <section class="kpis">
+      ${kpi('payments', 'ค่าใช้จ่ายเดือนนี้', fmt(Math.round(S.month.total)), 'บาท', `${delta == null ? '' : `<span class="${delta > 0 ? 'up' : 'ok'}">${delta > 0 ? '▲' : delta < 0 ? '▼' : '•'} ${Math.abs(delta)}%</span> จากเดือนก่อน · `}${S.month.n} รายการ`)}
+      ${kpi('savings', 'เงินสดย่อยคงเหลือ', fmt(Math.round(S.pc.balance)), 'บาท', `ใช้ไป ${fmt(Math.round(S.pc.used))} ตั้งแต่เติมล่าสุด · ${S.pc.low ? `<span class="bad">ต่ำกว่า ${fmt(S.pc.lowAlert)} ควรเติม</span>` : 'ปกติ'}`, S.pc.low ? 'bad' : 'ok')}
+      ${kpi('approval', 'รอ CEO อนุมัติ', fmt(Math.round(P.ceo.amt)), 'บาท', `${P.ceo.n} ใบเสนอ${P.wait.n ? ` · รอเข้าใบเสนอ ${P.wait.n} รายการ` : ''}`, P.ceo.n ? 'up' : '')}
+      ${kpi('fact_check', 'เงินทดรอง/ทริปค้างเคลียร์', fmt(Math.round(S.clear.amt)), 'บาท', `${S.clear.late ? `<span class="bad">${S.clear.late} ใบเกินกำหนด</span> · ` : ''}รวม ${S.clear.n} ใบ`)}
+      ${kpi('route', 'ทริปเดือนนี้', S.trips.n, 'ทริป', `${fmt(Math.round(S.trips.km))} กม. · กำลังเดินทาง ${S.trips.onTrip}`)}
+    </section>
+    <section class="row r1">
+      <div class="tc"><h2>${ms('bar_chart')}ค่าใช้จ่ายรายเดือน ปี ${y + 543}<span class="r">หน่วย: บาท</span></h2><div class="bars"><div class="grid0"></div>${bars}</div><div class="mlab">${MON.map((x, i) => `<span class="${i === cur ? 'cur' : ''}">${x}</span>`).join('')}</div></div>
+      <div class="tc"><h2>${ms('category')}ตามหมวด · เดือนนี้<span class="r">รวม ${fmt(Math.round(S.month.total))}</span></h2>${cats}</div>
+    </section>
+    <section class="row r2">
+      <div class="tc"><h2>${ms('account_tree')}ใบเสนอ CEO · สถานะการโอน</h2><div class="pipe">${st(P.ceo.n, 'รอ CEO', P.ceo.amt, P.ceo.n, P.ceo.n ? 'up' : '')}${st(P.ceoOk.n, 'รอส่งเข้าระบบ', P.ceoOk.amt)}${st(P.coo.n, 'รอ COO', P.coo.amt)}${st(P.paid.n, 'โอนแล้วเดือนนี้', P.paid.amt, 0, 'ok')}</div>
+        <div class="li wait"><span>รอโอนที่ยังไม่เข้าใบเสนอ</span><b class="num">${fmt(Math.round(P.wait.amt))} บาท</b><small>${P.wait.n} รายการ</small></div></div>
+      <div class="tc"><h2>${ms('directions_car')}ทริปตอนนี้</h2><div class="list">${trips}</div></div>
+      <div class="tc"><h2>${ms('schedule')}ค้างเคลียร์</h2><div class="list">${clr}</div></div>
+    </section>
+    <footer><span>${ms('sync')} อัปเดตอัตโนมัติทุก 5 นาที · ล่าสุด ${hhmm(TV.at)}</span>${TV.err ? `<span class="bad">${ms('cloud_off')} เชื่อมต่อไม่ได้ · แสดงข้อมูลล่าสุด</span>` : ''}<span>${ms('lock')} ไม่แสดงเลขบัญชีและไฟล์แนบ</span><span style="margin-left:auto">C2-Pay · ${VERSION}</span></footer>
+  </div></div>`;
+  tvClock(); tvFit();
+}
+
+// ----- จับคู่จอ (ฝั่งทีวี) -----
+const PAIR = { id: null, secret: null, exp: 0, t1: null, t2: null };
+function pairStop() { clearInterval(PAIR.t1); clearInterval(PAIR.t2); PAIR.id = null; }
+async function showPair() {
+  pairStop(); authEl().hidden = true; $('#stage').hidden = true; document.documentElement.classList.add('tv-on');
+  const el = tvEl(); el.className = 'tvx pair';
+  el.innerHTML = `<div class="pairc"><div class="tv-load"><div class="spin"></div><span>กำลังขอรหัสจับคู่…</span></div></div>`;
+  let r;
+  try { r = (await FN.httpsCallable('payApi')({ action: 'dispStart' })).data; }
+  catch (e) { el.innerHTML = `<div class="pairc"><p class="bad">${esc(errMsg(e))}</p><button class="btn pri" data-act="tvPair">${ms('refresh')}ลองใหม่</button><button class="btn ghost" data-act="tvPairCancel">กลับไปหน้าเข้าสู่ระบบ</button></div>`; return; }
+  PAIR.id = r.pairId; PAIR.secret = r.secret; PAIR.exp = Date.now() + r.ttl;
+  el.innerHTML = `<div class="pairc"><img src="img/icon-192.png" alt="" class="lg"><div class="pt">จับคู่จอนี้กับ C2-Pay</div>
+    <div class="code num" aria-label="รหัส ${r.code.split('').join(' ')}">${r.code.slice(0, 3)} ${r.code.slice(3)}</div>
+    <div class="ph">ให้ Admin เปิด C2-Pay → <b>ตั้งค่า → จอแสดงผล</b> แล้วพิมพ์รหัสนี้</div>
+    <div class="pe">รหัสหมดอายุใน <b class="num" id="pairT"></b> นาที · หมดแล้วระบบสร้างรหัสใหม่ให้เอง</div>
+    <button class="btn ghost" data-act="tvPairCancel">กลับไปหน้าเข้าสู่ระบบ</button></div>`;
+  const tick = () => { const s = Math.max(0, Math.round((PAIR.exp - Date.now()) / 1000)); const t = $('#pairT'); if (t) t.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; if (s <= 0) showPair(); };
+  tick(); PAIR.t2 = setInterval(tick, 1000);
+  PAIR.t1 = setInterval(async () => {
+    if (!PAIR.id) return;
+    try {
+      const p = (await FN.httpsCallable('payApi')({ action: 'dispPoll', pairId: PAIR.id, secret: PAIR.secret })).data;
+      if (p.status === 'ok') { pairStop(); setD(p.dtoken); el.className = 'tvx'; startTV('display'); }
+      else if (p.status === 'expired') showPair();
+    } catch (e) { /* ลองใหม่รอบหน้า */ }
+  }, 3000);
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  if (b.dataset.act === 'tvPair') { e.stopImmediatePropagation(); showPair(); }
+  else if (b.dataset.act === 'tvPairCancel') { e.stopImmediatePropagation(); pairStop(); stopTV(); showLogin(); }
+  else if (b.dataset.act === 'tvExit') { e.stopImmediatePropagation(); stopTV(); $('#stage').hidden = false; }
+}, true);
 
 boot();
 })();
