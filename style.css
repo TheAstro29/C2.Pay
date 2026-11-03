@@ -764,3 +764,15 @@ html.tv-on, html.tv-on body { overflow: hidden; }
 .pairc .code { font-size: clamp(56px, 12vw, 180px); font-weight: 700; letter-spacing: .08em; color: #fff; line-height: 1; }
 .pairc .ph { font-size: clamp(16px, 2vw, 26px); } .pairc .pe { font-size: clamp(14px, 1.5vw, 20px); color: var(--t-sub); } .pairc .pe b { color: var(--t-warn); }
 .pairc .btn { margin-top: 10px; color: var(--t-sub); } .pairc .bad { color: var(--t-bad); font-size: 20px; }
+
+/* ===== ค่ารถ: รถน้ำมัน / รถไฟฟ้า / ไม่เบิก ===== */
+.carseg { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 8px; }
+.carseg button { border: 1px solid var(--line); background: var(--surface); color: var(--sub); border-radius: 12px; padding: 10px 6px; display: flex; flex-direction: column; align-items: center; gap: 2px; min-height: 72px; font: inherit; }
+.carseg button .ms { font-size: 24px; } .carseg button b { font-weight: 600; font-size: 13.5px; } .carseg button small { font-size: 11px; color: var(--sub); }
+.carseg button.on { border-color: var(--brand); color: var(--ink); background: var(--tint); box-shadow: 0 0 0 1px var(--brand) inset; } .carseg button.on .ms { color: var(--brand); }
+.carseg button:disabled { opacity: .55; } .carseg button.on:disabled { opacity: 1; }
+.cwhy { display: flex; flex-wrap: wrap; gap: 6px; }
+.cwhy button { border: 1px solid var(--line); background: var(--surface); color: var(--sub); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 12.5px; display: inline-flex; align-items: center; gap: 4px; min-height: 34px; }
+.cwhy button.on { background: var(--good-bg); color: var(--good); border-color: transparent; font-weight: 600; }
+.lines b.zero { color: var(--sub); }
+.fsub { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; color: var(--sub); border-top: 1px dashed var(--line); padding-top: 8px; margin-top: 2px; } .fsub:first-child { border-top: 0; padding-top: 0; margin-top: 0; } .fsub .ms { font-size: 17px; color: var(--brand); }

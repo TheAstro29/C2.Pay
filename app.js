@@ -289,7 +289,9 @@ function vGeneral() {
       <button class="btn sm ghost" data-act="custDel" data-v="${i}" aria-label="ลบ ${esc(c.name)}">${ms('delete')}</button></div>`).join('');
   return `<div class="grid g2"><div class="stack">
       <div class="card"><h3>${ms('local_gas_station')}อัตราค่าเดินทาง</h3><div class="fgrid">
-        ${f('kmPerL', 'อัตราสิ้นเปลือง (กม./ลิตร)')}${f('fuelPrice', 'ราคาน้ำมันตั้งต้น (บาท/ลิตร)', 'แก้ได้ในแต่ละใบ')}
+        <div class="fsub full">${ms('local_gas_station')}รถน้ำมัน</div>${f('kmPerL', 'อัตราสิ้นเปลือง (กม./ลิตร)')}${f('fuelPrice', 'ราคาน้ำมันตั้งต้น (บาท/ลิตร)', 'แก้ได้ในแต่ละใบ')}
+        <div class="fsub full">${ms('ev_station')}รถไฟฟ้า</div>${f('kmPerKwh', 'รถไฟฟ้าวิ่งได้ (กม./kWh)')}${f('evPrice', 'ค่าไฟชาร์จนอกบริษัท (บาท/kWh)', 'แก้ได้ในแต่ละใบ')}
+        ${f('evFreeKm', 'แนะนำ "ไม่เบิก" เมื่อรถไฟฟ้าวิ่งไม่เกิน (กม.)', 'ใส่ 0 = ไม่แนะนำ · ผู้ขอเปลี่ยนเองได้')}<div class="fsub full">${ms('payments')}เบี้ยเลี้ยง · ที่พัก · เงินสดย่อย</div>
         ${f('allowance', 'เบี้ยเลี้ยง (บาท/คน/วัน)')}${f('hotel', 'ที่พัก (บาท/ห้อง/คืน)', 'ขอเกินได้รายทริป · Admin อนุมัติ')}
         ${f('hotelWarn', 'เตือนที่พักเกิน (บาท/ห้อง/คืน)', 'เกินยอดนี้ขึ้นสีแดง')}${f('lowAlert', 'เตือนเงินสดย่อยต่ำกว่า (บาท)')}</div></div>
       <div class="card"><h3>${ms('alarm')}กำหนดเคลียร์เงิน (นับจากวันจบทริป)</h3><div class="fgrid">
@@ -537,18 +539,41 @@ function vClearList() {
 }
 
 // ---------- ฟอร์มขอเบิก ----------
+// ----- ค่ารถ: รถน้ำมัน / รถไฟฟ้า / ไม่เบิก -----
+const CAR = { fuel: ['local_gas_station', 'รถน้ำมัน', 'คิดตามระยะ'], ev: ['ev_station', 'รถไฟฟ้า', 'คิดค่าชาร์จ'], none: ['money_off', 'ไม่เบิก', 'ค่าน้ำมัน/ชาร์จ'] };
+const CAR_WHY = ['รถไฟฟ้า วิ่งใกล้ ไม่ต้องชาร์จ', 'ชาร์จ/เติมที่บริษัทแล้ว', 'ไปกับรถคนอื่น/รถลูกค้า'];
+function carText(p, s) {
+  const car = p.car || 'fuel';
+  if (car === 'none') return ['ค่าน้ำมัน/ค่าชาร์จ', `ไม่เบิก${p.carWhy ? ` · ${esc(p.carWhy)}` : ''}`];
+  if (car === 'ev') return ['ค่าชาร์จรถไฟฟ้า', `${fmt(p.km)} กม. ÷ ${p.kmPer || s.kmPerKwh || 6} × ${p.price}`];
+  return ['ค่าน้ำมัน', `${fmt(p.km)} กม. ÷ ${p.kmPer || s.kmPerL} × ${p.price}`];
+}
+const carRow = (p, s) => { const c = carText(p, s); return `<div><span>${c[0]}<br><span class="f">${c[1]}</span></span><b class="${(p.car || 'fuel') === 'none' ? 'zero' : ''}">${fmt(p.fuel)}</b></div>`; };
+function carBox(f, k) {
+  const car = f.car || 'fuel', X = !!f.extNo, s = set();
+  const seg = Object.entries(CAR).map(([key, [ic, l, sub]]) => `<button type="button" class="${car === key ? 'on' : ''}" data-act="carSet" data-v="${key}" aria-pressed="${car === key}" ${X ? 'disabled' : ''}>${ms(ic)}<b>${l}</b><small>${sub}</small></button>`).join('');
+  const why = car === 'none' ? `<div class="field" style="margin-top:10px"><label for="f-carwhy">เหตุผลที่ไม่เบิก</label><div class="cwhy">${CAR_WHY.map((w) => `<button type="button" class="${f.carWhy === w ? 'on' : ''}" data-act="carWhy" data-v="${esc(w)}" ${X ? 'disabled' : ''}>${f.carWhy === w ? ms('check', 'style="font-size:16px"') : ''}${esc(w)}</button>`).join('')}</div>
+      <input class="inp" id="f-carwhy" data-f="carWhy" maxlength="120" value="${esc(f.carWhy)}" placeholder="หรือพิมพ์เหตุผลเอง" style="margin-top:6px" ${X ? 'readonly' : ''}></div>
+      <p class="formula" style="margin:6px 0 0">${ms('route', 'style="font-size:15px;vertical-align:-3px"')} ยังบันทึกระยะ ${fmt(k.km)} กม. ไว้ในรายงาน · ถ้าระหว่างทางต้องชาร์จ/เติมจริง ใส่ยอดตอนเคลียร์ได้</p>` : '';
+  const ev = car === 'ev' ? `<div class="field" style="margin-top:10px;max-width:220px"><label for="f-pev">ค่าไฟชาร์จ (บาท/kWh)</label><input class="inp num" type="number" inputmode="decimal" id="f-pev" data-f="priceEv" value="${esc(f.priceEv)}" ${X ? 'readonly' : ''}></div>
+      <p class="formula" style="margin:6px 0 0">${fmt(k.km)} กม. ÷ ${s.kmPerKwh || 6} กม./kWh × ${k.price} บาท = <b>${fmt(k.fuel)}</b> บาท · ตอนเคลียร์ใส่ค่าชาร์จจริงตามใบเสร็จ/สลิปแอปชาร์จ</p>` : '';
+  const hint = f.evHint ? `<div class="banner info" style="margin-top:10px">${ms('lightbulb')}<span>${esc(f.evHint)}</span></div>` : '';
+  return `<div class="field full" id="carField"><label>ค่ารถ${X ? ' (ตามใบเดิม)' : ''}</label><div class="carseg" role="group" aria-label="ค่ารถ">${seg}</div>${hint}${why}${ev}</div>`;
+}
+
 function newForm(d) {
   const s = set();
-  if (d) return { editNo: d.no, staffId: d.staffId, travelerIds: d.travelers.map((t) => t.id).filter((x) => x !== d.staffId), title: d.title, go: d.go, back: d.back, stops: [...d.stops], geo: [...(d.geo || d.stops.map(() => null))], kmManual: !!d.kmReason || d.kmCalc == null, km: d.plan.km, kmReason: d.kmReason || '', kmCalc: d.kmCalc, kmWhy: '', rooms: d.plan.rooms, hotelOver: !!d.plan.hotelOver, hotelRate: d.plan.hotelRate || '', hotelReason: d.plan.hotelReason || '', extras: (d.plan.extras || []).map((e) => ({ ...e })), price: d.plan.price };
+  if (d) return { editNo: d.no, staffId: d.staffId, travelerIds: d.travelers.map((t) => t.id).filter((x) => x !== d.staffId), title: d.title, go: d.go, back: d.back, stops: [...d.stops], geo: [...(d.geo || d.stops.map(() => null))], kmManual: !!d.kmReason || d.kmCalc == null, km: d.plan.km, kmReason: d.kmReason || '', kmCalc: d.kmCalc, kmWhy: '', rooms: d.plan.rooms, hotelOver: !!d.plan.hotelOver, hotelRate: d.plan.hotelRate || '', hotelReason: d.plan.hotelReason || '', extras: (d.plan.extras || []).map((e) => ({ ...e })), car: d.plan.car || 'fuel', carWhy: d.plan.carWhy || '', price: d.plan.car === 'ev' || d.plan.car === 'none' ? s.fuelPrice : d.plan.price, priceEv: d.plan.car === 'ev' ? d.plan.price : (s.evPrice || 8), evAsked: true };
   const t = todayTH();
-  return { staffId: ST.me.id, travelerIds: [], title: '', go: addDays(t, 1), back: addDays(t, 2), stops: [''], geo: [null], kmManual: false, km: '', kmReason: '', kmCalc: null, kmWhy: '', rooms: 1, hotelOver: false, hotelRate: '', hotelReason: '', extras: [], price: s.fuelPrice };
+  return { staffId: ST.me.id, travelerIds: [], title: '', go: addDays(t, 1), back: addDays(t, 2), stops: [''], geo: [null], kmManual: false, km: '', kmReason: '', kmCalc: null, kmWhy: '', rooms: 1, hotelOver: false, hotelRate: '', hotelReason: '', extras: [], car: 'fuel', carWhy: '', price: s.fuelPrice, priceEv: s.evPrice || 8, evAsked: false };
 }
 function calcForm(f) {
   const s = set(), ddays = f.go && f.back && f.back >= f.go ? dayDiff(f.go, f.back) + 1 : 1, nights = Math.max(0, ddays - 1), people = 1 + f.travelerIds.filter((x) => x !== f.staffId).length;
   const km = f.extNo && f.baseManual && !f.kmManual ? Math.round((f.baseKm + (f.kmCalc != null && f.baseCalc != null ? f.kmCalc - f.baseCalc : 0)) * 10) / 10 : f.kmManual || f.kmCalc == null ? Number(f.km) || 0 : f.kmCalc, rate = f.hotelOver && nights ? Number(f.hotelRate) || 0 : s.hotel, rooms = Math.max(1, Number(f.rooms) || 1);
-  const fuel = Math.ceil(km / s.kmPerL * (Number(f.price) || s.fuelPrice)), allowance = people * ddays * s.allowance, hotel = nights * rooms * rate;
+  const car = f.car || 'fuel', kmPer = car === 'ev' ? (s.kmPerKwh || 6) : s.kmPerL, price = car === 'ev' ? (Number(f.priceEv) || s.evPrice || 8) : car === 'none' ? 0 : (Number(f.price) || s.fuelPrice);
+  const fuel = car === 'none' ? 0 : Math.ceil(km / kmPer * price), allowance = people * ddays * s.allowance, hotel = nights * rooms * rate;
   const extras = f.extras.filter((e) => e.desc && Number(e.amount) > 0).reduce((t, e) => t + Number(e.amount), 0);
-  return { ddays, nights, people, km, rate, rooms, fuel, allowance, hotel, extras, total: fuel + allowance + hotel + extras };
+  return { ddays, nights, people, km, rate, rooms, car, kmPer, price, fuel, allowance, hotel, extras, total: fuel + allowance + hotel + extras };
 }
 let routeT = null, routeSeq = 0;
 function refreshRoute() {
@@ -622,13 +647,13 @@ function vReq() {
       <div class="field full"><label for="f-title">งาน</label><input class="inp" id="f-title" data-f="title" placeholder="เช่น ติดตั้งเครื่องคัดสี" value="${esc(f.title)}" ${X ? 'readonly' : ''}></div>
       <div class="field"><label for="f-go">วันไป</label><input class="inp" type="date" id="f-go" data-f="go" value="${f.go}" ${X ? 'readonly' : ''}></div>
       <div class="field"><label for="f-back">วันกลับ${X ? ' (ขยายได้)' : ''}</label><input class="inp" type="date" id="f-back" data-f="back" value="${f.back}" ${X ? `min="${f.backMin}"` : ''}></div>
-      ${stops}${kmBox}
+      ${stops}${kmBox}${carBox(f, k)}
       <div class="field"><label for="f-rooms">จำนวนห้องต่อคืน</label><input class="inp num" type="number" inputmode="numeric" id="f-rooms" data-f="rooms" value="${esc(f.rooms)}"></div>
       ${hotel || '<div id="hotelField" hidden></div>'}${extras}
-      <div class="field full"><label>อัตราที่ใช้ ${ms('lock', 'style="font-size:15px;vertical-align:-3px"')} <span style="font-weight:400">ตั้งโดย admin</span></label><div class="lockrates"><span>อัตราสิ้นเปลือง</span><b>${s.kmPerL} กม./ลิตร</b><span>ราคาน้ำมัน</span><b>${f.price} บาท/ลิตร</b><span>เบี้ยเลี้ยง</span><b>${fmt(s.allowance)} บาท/คน/วัน</b><span>ที่พัก</span><b>${fmt(s.hotel)} บาท/ห้อง/คืน</b></div></div>
+      <div class="field full"><label>อัตราที่ใช้ ${ms('lock', 'style="font-size:15px;vertical-align:-3px"')} <span style="font-weight:400">ตั้งโดย admin</span></label><div class="lockrates">${(f.car || 'fuel') === 'ev' ? `<span>รถไฟฟ้าวิ่งได้</span><b>${s.kmPerKwh || 6} กม./kWh</b><span>ค่าไฟชาร์จ</span><b>${f.priceEv} บาท/kWh</b>` : (f.car || 'fuel') === 'fuel' ? `<span>อัตราสิ้นเปลือง</span><b>${s.kmPerL} กม./ลิตร</b><span>ราคาน้ำมัน</span><b>${f.price} บาท/ลิตร</b>` : ''}<span>เบี้ยเลี้ยง</span><b>${fmt(s.allowance)} บาท/คน/วัน</b><span>ที่พัก</span><b>${fmt(s.hotel)} บาท/ห้อง/คืน</b></div></div>
     </div></div>
     <div class="card calc"><div id="calcBody"><h3>${ms('calculate')}ยอดที่ขอเบิก<span class="r">${k.ddays} วัน ${k.nights} คืน · ${k.people} คน</span></h3><div class="lines">
-      <div><span>ค่าน้ำมัน<br><span class="f">${fmt(k.km)} กม. ÷ ${s.kmPerL} × ${f.price}</span></span><b>${fmt(k.fuel)}</b></div>
+      ${carRow({ car: k.car, km: k.km, kmPer: k.kmPer, price: k.price, carWhy: f.carWhy, fuel: k.fuel }, s)}
       <div><span>เบี้ยเลี้ยง<br><span class="f">${k.people} คน × ${k.ddays} วัน × ${fmt(s.allowance)}</span></span><b>${fmt(k.allowance)}</b></div>
       <div><span>ที่พัก<br><span class="f">${k.nights} คืน × ${k.rooms} ห้อง × ${fmt(k.rate)}${f.hotelOver && k.nights ? ' <span class="overpill">เกินอัตรา</span>' : ''}</span></span><b>${fmt(k.hotel)}</b></div>
       ${k.extras ? `<div><span>ค่าใช้จ่ายอื่น</span><b>${fmt(k.extras)}</b></div>` : ''}</div>
@@ -647,7 +672,7 @@ function drawDoc(no) {
   const d = doc(no); if (!d) { closeDrawer(); return; }
   if (d.type && d.type !== 'TRV') { ST.openNo = no; drawOther(d); return; }
   ST.openNo = no; const p = d.plan, me = ST.me.id, lead = d.staffId === me, s = set();
-  const lines = `<div class="lines"><div><span>ค่าน้ำมัน<br><span class="f">${fmt(p.km)} กม. ÷ ${s.kmPerL} × ${p.price}</span></span><b>${fmt(p.fuel)}</b></div>
+  const lines = `<div class="lines">${carRow(p, s)}
       <div><span>เบี้ยเลี้ยง<br><span class="f">${p.people} คน × ${p.days} วัน</span></span><b>${fmt(p.allowance)}</b></div>
       <div><span>ที่พัก<br><span class="f">${p.nights} คืน × ${p.rooms} ห้อง × ${fmt(p.rate)}${p.hotelOver ? ` <span class="overpill">เกินอัตรา</span><br>เหตุผล: ${esc(p.hotelReason)}` : ''}</span></span><b>${fmt(p.hotel)}</b></div>
       ${(p.extras || []).map((e) => `<div><span>${esc(e.desc)}<br><span class="f">${esc(e.cat)}</span></span><b>${fmt(e.amount)}</b></div>`).join('')}
@@ -655,7 +680,7 @@ function drawDoc(no) {
   const km = d.kmCalc != null && d.kmSrc === 'est' ? `<div class="banner warn">${ms('route')}<span>ระยะทางประมาณจากเส้นตรง ${fmt(d.kmCalc)} กม. (บริการแผนที่ใช้ไม่ได้ตอนส่ง) · ขอ <b>${fmt(p.km)}</b> กม.${d.kmReason ? ` · ${esc(d.kmReason)}` : ''} · ตรวจก่อนอนุมัติ</span></div>` : d.kmCalc != null ? (d.kmReason ? `<div class="banner warn">${ms('route')}<span>ระบบคำนวณ <b>${fmt(d.kmCalc)}</b> กม. · ขอ <b>${fmt(p.km)}</b> กม. · เหตุผล: ${esc(d.kmReason)}</span></div>` : '') : `<div class="banner info">${ms('route')}<span>ระยะทางกรอกเอง ${fmt(p.km)} กม.${d.kmReason ? ` · ${esc(d.kmReason)}` : ''}</span></div>`;
   const act = actionsFor(d, lead) + (isCust() && ST.trialMode ? `<div style="border-top:1px dashed var(--line);padding-top:10px"><button class="btn block" style="color:var(--bad);border-color:var(--bad)" data-act="delAsk">${ms('delete_forever')}ลบใบนี้ (โหมดทดลอง)</button><div id="delBox"></div></div>` : '');
   const mapBtn = d.routePts ? `<a class="btn sm" href="${gmLink(d.routePts)}" target="_blank" rel="noopener">${ms('map')}เปิดเส้นทางใน Google Maps</a>` : '';
-  const actual = d.actual ? `<div class="card"><h3>${ms('fact_check')}ผลเคลียร์</h3><div class="lines"><div><span>น้ำมันจริง</span><b>${fmt(d.actual.fuel)}</b></div><div><span>เบี้ยเลี้ยง ${d.actual.people} คน × ${d.actual.days} วัน</span><b>${fmt(d.actual.allowance)}</b></div><div><span>ที่พัก ${d.actual.nights} คืน${d.actual.hotelExcess > 0 ? `<br><span class="f">เกินที่อนุมัติ ${fmt(d.actual.hotelExcess)} · ${d.actual.hotelExApproved ? 'อนุมัติแล้ว' : 'ไม่คืนส่วนนี้'}</span>` : ''}</span><b>${fmt(d.actual.hotel)}</b></div>${(d.actual.extras || []).map((e) => `<div><span>${esc(e.desc)}${e.why ? `<br><span class="f">ไม่มีใบเสร็จ: ${esc(e.why)}</span>` : ''}</span><b>${fmt(e.counted)}</b></div>`).join('')}<div class="tot"><span>ใช้จริง</span><b>${fmt(d.actual.total)}</b></div></div>
+  const actual = d.actual ? `<div class="card"><h3>${ms('fact_check')}ผลเคลียร์</h3><div class="lines"><div><span>${p.car === 'ev' ? 'ค่าชาร์จจริง' : p.car === 'none' ? 'น้ำมัน/ชาร์จจริง' : 'น้ำมันจริง'}</span><b>${fmt(d.actual.fuel)}</b></div><div><span>เบี้ยเลี้ยง ${d.actual.people} คน × ${d.actual.days} วัน</span><b>${fmt(d.actual.allowance)}</b></div><div><span>ที่พัก ${d.actual.nights} คืน${d.actual.hotelExcess > 0 ? `<br><span class="f">เกินที่อนุมัติ ${fmt(d.actual.hotelExcess)} · ${d.actual.hotelExApproved ? 'อนุมัติแล้ว' : 'ไม่คืนส่วนนี้'}</span>` : ''}</span><b>${fmt(d.actual.hotel)}</b></div>${(d.actual.extras || []).map((e) => `<div><span>${esc(e.desc)}${e.why ? `<br><span class="f">ไม่มีใบเสร็จ: ${esc(e.why)}</span>` : ''}</span><b>${fmt(e.counted)}</b></div>`).join('')}<div class="tot"><span>ใช้จริง</span><b>${fmt(d.actual.total)}</b></div></div>
       <div class="diffbox ${d.diff < 0 ? 'refund' : d.diff > 0 ? 'topup' : 'even'}" style="margin-top:10px"><span>${d.diff < 0 ? 'ทีมงานคืนเงิน' : d.diff > 0 ? 'บริษัทจ่ายเพิ่ม' : 'พอดี'}</span><b>${fmt(Math.abs(d.diff))} บาท</b></div>
       ${(d.actual.files || []).length ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">${d.actual.files.map((f, i) => fileBtn(f, `ใบเสร็จ ${i + 1}`)).join('')}</div>` : ''}</div>` : '';
   const pay = d.payment ? `<div class="lines" style="margin-top:6px"><div><span>โอนเมื่อ ${dt(d.payment.date)} · ${esc(d.payment.bank)}${d.payment.batch ? ` · ${esc(d.payment.batch)}` : ''}${d.payment.bankChanged ? ' <span class="pill p-pending">บัญชีเพิ่งเปลี่ยน · ยืนยันแล้ว</span>' : ''}</span>${fileBtn(d.payment.slip, 'สลิป')}</div></div>` : '';
@@ -700,7 +725,7 @@ function actionsFor(d, lead) {
 // ---------- เคลียร์ ----------
 function newClr(d) {
   if (d.clearSub) return JSON.parse(JSON.stringify({ fuel: d.clearSub.fuel, people: d.clearSub.people, days: d.clearSub.days, stays: d.clearSub.stays || [], ex: d.clearSub.ex || [], files: d.clearSub.files || [], note: d.clearSub.note || '', hotelEx: false, exOver: false, src: 'PC' }));
-  return { fuel: '', people: d.plan.people, days: d.plan.days, stays: d.plan.nights ? [{ from: d.go, to: addDays(d.back, -1), rate: '' }] : [], ex: (d.plan.extras || []).map(() => ({ amount: '', file: null, noRcpt: false, why: '' })), files: [], note: '', hotelEx: false, exOver: false, src: 'PC' };
+  return { fuel: d.plan.car === 'none' ? 0 : '', people: d.plan.people, days: d.plan.days, stays: d.plan.nights ? [{ from: d.go, to: addDays(d.back, -1), rate: '' }] : [], ex: (d.plan.extras || []).map(() => ({ amount: '', file: null, noRcpt: false, why: '' })), files: [], note: '', hotelEx: false, exOver: false, src: 'PC' };
 }
 function clrCalc(d, k) {
   const s = set(), p = d.plan, allowance = (Number(k.people) || 0) * (Number(k.days) || 0) * s.allowance, cap = (p.rooms || 1) * (p.rate || s.hotel);
@@ -712,7 +737,7 @@ function clrCalc(d, k) {
   const extras = ex.reduce((t, e) => t + e.counted, 0), exOver = ex.reduce((t, e) => t + Math.max(0, e.actual - e.amount), 0);
   if (!err && ex.some((e) => !e.filled)) err = 'ใส่ยอดจริงของค่าใช้จ่ายอื่นให้ครบ';
   if (!err && ex.some((e) => !e.ok)) err = 'ค่าใช้จ่ายอื่นทุกรายการต้องแนบใบเสร็จ หรือติ๊กไม่มีใบเสร็จพร้อมเหตุผล';
-  if (k.fuel === '' || k.fuel == null) err = err || 'ใส่ค่าน้ำมันจริง';
+  if (k.fuel === '' || k.fuel == null) err = err || 'ใส่ค่าน้ำมัน/ค่าชาร์จจริง (ไม่มีใส่ 0)';
   const total = (Number(k.fuel) || 0) + allowance + hotel + extras;
   return { allowance, nights: nights.length, hotelClaim, hotelExcess, hotel, cap, ex, extras, exOver, total, err };
 }
@@ -736,7 +761,7 @@ function vClr() {
     <div class="grid g2"><div class="card"><div class="fgrid">
       <div class="field"><label for="c-people">จำนวนคน</label><input class="inp num" type="number" id="c-people" data-c="people" value="${esc(k.people)}"></div>
       <div class="field"><label for="c-days">จำนวนวันจริง</label><input class="inp num" type="number" id="c-days" data-c="days" value="${esc(k.days)}"></div>
-      <div class="field full"><label for="c-fuel">ค่าน้ำมันตามจริง (บาท)</label><input class="inp num" type="number" id="c-fuel" data-c="fuel" value="${esc(k.fuel)}" placeholder="รวมทุกใบเสร็จน้ำมัน"></div>
+      <div class="field full"><label for="c-fuel">${d.plan.car === 'ev' ? 'ค่าชาร์จรถไฟฟ้าตามจริง (บาท)' : d.plan.car === 'none' ? 'ค่าน้ำมัน/ค่าชาร์จที่จ่ายจริง (บาท) · ไม่ได้จ่ายใส่ 0' : 'ค่าน้ำมันตามจริง (บาท)'}</label><input class="inp num" type="number" id="c-fuel" data-c="fuel" value="${esc(k.fuel)}" placeholder="รวมทุกใบเสร็จน้ำมัน"></div>
       ${stays}${ex}${files}
       ${!adminRev ? `<div class="field full"><label for="c-note">หมายเหตุถึง admin (ถ้ามี)</label><input class="inp" id="c-note" data-c="note" value="${esc(k.note)}"></div>` : ''}</div></div>
     <div class="card calc"><div id="calcBody"><h3>${ms('compare_arrows')}เทียบยอด</h3><div class="lines">
@@ -822,11 +847,11 @@ function detailOf(x, d, pcr, idx) {
   const pay = `<div class="xnote">โอนให้: ${esc(x.payee)}${x.external ? ' · ตามใบแจ้งหนี้' : x.bank ? ` · ${esc(x.bank.bank)} ${esc(x.bank.no)}` : ''}</div>`;
   if (x.kind === 'ext') { const e = (d.ext || [])[d.ext.length - 1] || {}, df = e.diff || {};
     return `<div class="item">${head()}${pay}${kv([['ชื่องาน', `<b>${esc(d.title)}</b>`], ['วันที่ (ทริปใหม่)', `${thDate(d.go)}${d.back !== d.go ? ' – ' + thDate(d.back) : ''}${df.newBack !== df.oldBack ? ` <small>(เดิมกลับ ${thDate(df.oldBack)})</small>` : ''}`], ['เส้นทางการเดินทาง', route(d.stops)], ['ชื่อผู้เดินทาง', people(d)], (df.added || []).length ? ['สถานที่ที่เพิ่ม', df.added.map(esc).join(', ')] : null, e.note ? ['เหตุผลที่ต่อทริป', esc(e.note)] : null])}
-      ${df.fuel ? row('ค่าน้ำมันเพิ่ม', `${fmt(df.km)} กม.`, df.fuel) : ''}${df.allowance ? row('ค่าเบี้ยเลี้ยงเพิ่ม', '', df.allowance) : ''}${df.hotel ? row('ค่าที่พักเพิ่ม', '', df.hotel) : ''}${(df.extras || []).map((z) => row(esc(z.cat), esc(z.desc), z.amount)).join('')}${sum(x.amount)}</div>`; }
+      ${df.fuel ? row(`${carText(d.plan, set())[0]}เพิ่ม`, `${fmt(df.km)} กม.`, df.fuel) : ''}${df.allowance ? row('ค่าเบี้ยเลี้ยงเพิ่ม', '', df.allowance) : ''}${df.hotel ? row('ค่าที่พักเพิ่ม', '', df.hotel) : ''}${(df.extras || []).map((z) => row(esc(z.cat), esc(z.desc), z.amount)).join('')}${sum(x.amount)}</div>`; }
   if (x.kind === 'topup') return `<div class="item">${head()}${pay}${kv([['ชื่องาน', `<b>${esc(d.title)}</b>`], d.type === 'TRV' ? ['วันที่', `${thDate(d.go)}${d.back !== d.go ? ' – ' + thDate(d.back) : ''}`] : null])}${row('', 'ใช้จริงตามใบเสร็จ', d.actual ? d.actual.total : 0)}${row('', 'หัก เงินที่จ่ายไปแล้ว', -d.requested)}${sum(x.amount)}</div>`;
   if (d.type === 'TRV') { const p = d.plan, s = set();
     return `<div class="item">${head()}${pay}${kv([['ชื่องาน', `<b>${esc(d.title)}</b>`], ['วันที่', `${thDate(d.go)}${d.back !== d.go ? ' – ' + thDate(d.back) : ''} (${p.days} วัน ${p.nights} คืน)`], ['เส้นทางการเดินทาง', route(d.stops)], ['ชื่อผู้เดินทาง', people(d)], d.kmReason ? ['หมายเหตุระยะทาง', esc(d.kmReason)] : null])}
-      ${row('ค่าน้ำมัน', `${fmt(p.km)} กม. ÷ ${s.kmPerL} × ${p.price}`, p.fuel)}${row('ค่าเบี้ยเลี้ยง', `${p.people} คน × ${p.days} วัน × ${fmt(s.allowance)}`, p.allowance)}
+      ${(() => { const c = carText(p, s); return row(c[0], c[1], p.fuel); })()}${row('ค่าเบี้ยเลี้ยง', `${p.people} คน × ${p.days} วัน × ${fmt(s.allowance)}`, p.allowance)}
       ${p.nights ? row('ค่าที่พัก', `${p.nights} คืน × ${p.rooms} ห้อง × ${fmt(p.rate)}${p.hotelOver ? ` <span class="cat">(เกินอัตรา ${fmt(s.hotel)})</span>` : ''}`, p.hotel, p.hotelOver && p.hotelReason ? `เหตุผล: ${esc(p.hotelReason)}` : '') : ''}
       ${(p.extras || []).map((e) => row(esc(e.cat), esc(e.desc), e.amount)).join('')}${sum(x.amount)}</div>`; }
   if (d.type === 'ADV') return `<div class="item">${head()}${pay}${kv([['เรื่อง', `<b>${esc(d.title)}</b>`], d.customer ? ['ลูกค้า', esc(d.customer)] : null, ['วันที่', thDate(d.go)]])}${d.items.map((i) => row('', esc(i.desc), i.amount)).join('')}${sum(x.amount)}<div class="xnote" style="margin:6px 0 0">หลังใช้จริง ทีมงานต้องเคลียร์ด้วยใบเสร็จภายใน ${set().clearDue} วัน</div></div>`;
@@ -953,7 +978,7 @@ function routeCard(d, mapBtn) {
 /** การ์ดต่อทริปในรายละเอียดใบ */
 function extCards(d) {
   const dl = (x) => { const p = []; if (x.added && x.added.length) p.push(`เพิ่มสถานที่: ${x.added.map(esc).join(', ')}`); if (x.newBack !== x.oldBack) p.push(`กลับ ${dt(x.oldBack)} → ${dt(x.newBack)}`); if (x.addPeople && x.addPeople.length) p.push(`เพิ่มคน: ${x.addPeople.map(esc).join(', ')}`); if (x.km) p.push(`${x.km > 0 ? '+' : ''}${fmt(x.km)} กม.`); (x.extras || []).forEach((e) => p.push(`${esc(e.desc)} ${fmt(e.amount)}`)); return p.join(' · '); };
-  const brk = (x) => `<div class="lines" style="margin-top:6px">${x.fuel ? `<div><span>ค่าน้ำมันเพิ่ม</span><b>${fmt(x.fuel)}</b></div>` : ''}${x.allowance ? `<div><span>เบี้ยเลี้ยงเพิ่ม</span><b>${fmt(x.allowance)}</b></div>` : ''}${x.hotel ? `<div><span>ที่พักเพิ่ม</span><b>${fmt(x.hotel)}</b></div>` : ''}${(x.extras || []).length ? `<div><span>ค่าใช้จ่ายอื่นเพิ่ม</span><b>${fmt(x.extras.reduce((t, e) => t + e.amount, 0))}</b></div>` : ''}</div>`;
+  const brk = (x) => `<div class="lines" style="margin-top:6px">${x.fuel ? `<div><span>${carText(d.plan, set())[0]}เพิ่ม</span><b>${fmt(x.fuel)}</b></div>` : ''}${x.allowance ? `<div><span>เบี้ยเลี้ยงเพิ่ม</span><b>${fmt(x.allowance)}</b></div>` : ''}${x.hotel ? `<div><span>ที่พักเพิ่ม</span><b>${fmt(x.hotel)}</b></div>` : ''}${(x.extras || []).length ? `<div><span>ค่าใช้จ่ายอื่นเพิ่ม</span><b>${fmt(x.extras.reduce((t, e) => t + e.amount, 0))}</b></div>` : ''}</div>`;
   let h = '';
   if (d.extReject && !d.extReq) h += `<div class="banner warn">${ms('block')}<span>ไม่อนุมัติต่อทริป: <b>${esc(d.extReject)}</b></span></div>`;
   if (d.extReq) h += `<div class="card" style="border-color:var(--warn)"><h3>${ms('add_location_alt')}คำขอต่อทริป · รออนุมัติ<span class="r">+${fmt(d.extReq.amount)} บาท</span></h3><p style="margin:0">${dl(d.extReq.diff)}</p>${brk(d.extReq.diff)}<p class="formula" style="margin:6px 0 0">ขอโดย ${esc(d.extReq.byName)} · ${dtTime(d.extReq.at)}${d.extReq.note ? ` · ${esc(d.extReq.note)}` : ''}</p></div>`;
@@ -1227,7 +1252,7 @@ async function voucherPrint(no) {
   const dot = (v) => `<span class="vfill">${v}</span>`;
   const sign = (role) => `<div class="vsign"><div><span>ลงชื่อ</span><span class="vfill"></span><span>${role}</span></div><div><span>วันที่</span><span class="vfill"></span></div></div>`;
   const a = d.actual, ln = (k, v) => `<div class="ln2"><span>${k}</span><b>${fmt(v)}</b></div>`;
-  const att = trv ? ln('ค่าน้ำมันตามจริง', a.fuel) + ln(`ค่าเบี้ยเลี้ยง ${a.people} คน × ${a.days} วัน × ${fmt(st.allowance)}`, a.allowance) + ln(`ค่าที่พัก ${a.nights} คืน`, a.hotel)
+  const att = trv ? ln(d.plan.car === 'ev' ? 'ค่าชาร์จรถไฟฟ้าตามจริง' : d.plan.car === 'none' ? 'ค่าน้ำมัน/ค่าชาร์จที่จ่ายจริง' : 'ค่าน้ำมันตามจริง', a.fuel) + ln(`ค่าเบี้ยเลี้ยง ${a.people} คน × ${a.days} วัน × ${fmt(st.allowance)}`, a.allowance) + ln(`ค่าที่พัก ${a.nights} คืน`, a.hotel)
       + (a.hotelExcess > 0 ? `<div class="ln2"><span>ส่วนเกินที่พัก ${fmt(a.hotelExcess)} ${a.hotelExApproved ? '(admin อนุมัติ)' : '(ไม่อนุมัติ · ไม่รวม)'}</span><b></b></div>` : '')
       + (a.extras || []).map((e, i) => ln(`ค่าใช้จ่ายอื่น ${i + 1}. ${esc(e.desc)} (${esc(e.cat)})${e.why ? ' · ไม่มีใบเสร็จ: ' + esc(e.why) : ''}`, e.counted)).join('')
     : (a.receipts || []).map((x) => ln(`${esc(x.desc)} (${esc(x.cat)})${x.why ? ' · ไม่มีใบเสร็จ: ' + esc(x.why) : ''}`, x.amount)).join('');
@@ -1618,6 +1643,8 @@ async function trvClick(a, v, b) {
     if (!(k.km > 0)) chk.push([$('#f-km') || '#f-stop-0', 'ระยะทาง', () => 'ใส่ระยะทางไป-กลับ']);
     if (f.kmManual && f.kmCalc != null && f.kmSrc !== 'est' && Math.abs(k.km - f.kmCalc) >= 0.5) chk.push(['#f-kmr', 'เหตุผลที่แก้ระยะทาง']);
     if (f.hotelOver && k.nights) chk.push(['#f-hr', 'ราคาที่พักต่อคืน', vMoney], ['#f-hre', 'เหตุผลที่พักเกินอัตรา']);
+    if (!f.extNo && f.car === 'none') chk.push(['#f-carwhy', 'เหตุผลที่ไม่เบิกค่าน้ำมัน/ค่าชาร์จ']);
+    if (!f.extNo && f.car === 'ev') chk.push(['#f-pev', 'ค่าไฟชาร์จ (บาท/kWh)', (x) => Number(x) > 0 && Number(x) <= 50 ? '' : 'ใส่ค่าไฟต่อหน่วย 0.5–50 บาท']);
     f.extras.forEach((x, i) => { if (x.desc.trim() || x.amount !== '') chk.push([`#f-exd-${i}`, `รายการค่าใช้จ่ายอื่น ${i + 1}`], [`#f-exa-${i}`, `ยอดค่าใช้จ่ายอื่น ${i + 1}`, vMoney]); });
     if (f.extNo) { chk.splice(0, 3, ['#f-back', 'วันกลับ', (x) => !x ? 'ใส่วันกลับ' : x < f.backMin ? 'วันกลับต้องไม่ก่อนวันกลับเดิม' : '']); const lk = new Set(Array.from({ length: f.lockEx }, (_, i) => [`#f-exd-${i}`, `#f-exa-${i}`]).flat()); for (let i = chk.length - 1; i >= 0; i--) if (lk.has(chk[i][0])) chk.splice(i, 1); }
     if (!need(chk)) return true;
@@ -1630,7 +1657,7 @@ async function trvClick(a, v, b) {
       return true;
     }
     await busy(b, async () => {
-      const form = { editNo: f.editNo, staffId: f.staffId, travelerIds: f.travelerIds, title: f.title, go: f.go, back: f.back, stops: f.stops.map((x) => x.trim()).filter(Boolean), geo: f.stops.map((x, i) => (x.trim() ? f.geo[i] || null : undefined)).filter((g) => g !== undefined), km: k.km, kmReason: f.kmManual || f.kmCalc == null ? f.kmReason : '', rooms: f.rooms, hotelOver: f.hotelOver, hotelRate: f.hotelRate, hotelReason: f.hotelReason, extras: f.extras, price: f.price };
+      const form = { editNo: f.editNo, staffId: f.staffId, travelerIds: f.travelerIds, title: f.title, go: f.go, back: f.back, stops: f.stops.map((x) => x.trim()).filter(Boolean), geo: f.stops.map((x, i) => (x.trim() ? f.geo[i] || null : undefined)).filter((g) => g !== undefined), km: k.km, kmReason: f.kmManual || f.kmCalc == null ? f.kmReason : '', rooms: f.rooms, hotelOver: f.hotelOver, hotelRate: f.hotelRate, hotelReason: f.hotelReason, extras: f.extras, car: f.car || 'fuel', carWhy: f.car === 'none' ? f.carWhy : '', price: f.car === 'ev' ? f.priceEv : f.price };
       const r = await api('trvSubmit', { form }); ST.form = null; await reloadTrv();
       ST.view = isAdmin() ? 'inbox' : 'home'; render(); toast(form.editNo ? `บันทึก ${r.no} แล้ว` : `ส่งคำขอ ${r.no} แล้ว · รอ admin อนุมัติ`); if (isAdmin()) drawDoc(r.no);
     });
@@ -1744,7 +1771,7 @@ document.addEventListener('change', async (e) => {
 });
 document.addEventListener('input', (e) => {
   const el = e.target;
-  if (ST.form && el.dataset.f) { const k = el.dataset.f; ST.form[k] = el.value; if (k === 'km') ST.form.kmAuto = false; if (['km', 'rooms', 'hotelRate'].includes(k)) updCalc(); return; }
+  if (ST.form && el.dataset.f) { const k = el.dataset.f; ST.form[k] = el.value; if (k === 'km') ST.form.kmAuto = false; if (['km', 'rooms', 'hotelRate', 'priceEv'].includes(k)) updCalc(); return; }
   if (ST.form && el.dataset.stop !== undefined) { const i = +el.dataset.stop; ST.form.stops[i] = el.value; ST.form.geo[i] = null; ST.form.optApplied = null; el.parentElement.querySelector('.ta-ok')?.remove(); taInput(el, String(i)); return; }
   if (el.id === 'cust-q') { taInput(el, 'cust'); return; }
   if (ST.form && el.dataset.ex) { const [i, key] = el.dataset.ex.split(':'); ST.form.extras[+i][key] = el.value; if (key === 'amount') updCalc(); return; }
@@ -1939,6 +1966,18 @@ async function r5Click(a, v, b) {
     return true;
   }
   if (a === 'tvView') { closeDrawer(); startTV('preview'); return true; }
+  if (a === 'carSet' || a === 'carWhy') {
+    const f = ST.form; if (!f) return true; const sc = $('#view').scrollTop, st = set();
+    if (a === 'carWhy') { f.carWhy = v; }
+    else {
+      const km = calcForm(f).km, free = Number(st.evFreeKm ?? 150);
+      f.evHint = '';
+      if (v === 'ev' && !f.evAsked && free > 0 && km > 0 && km <= free) { f.car = 'none'; f.carWhy = f.carWhy || CAR_WHY[0]; f.evHint = `ระยะ ${fmt(km)} กม. ไม่เกิน ${fmt(free)} กม. ระบบเลือก "ไม่เบิก" ให้ก่อน · ถ้าต้องชาร์จข้างนอก กด "รถไฟฟ้า" อีกครั้ง`; }
+      else f.car = v;
+      if (v === 'ev') f.evAsked = true;
+    }
+    render(); $('#view').scrollTop = sc; return true;
+  }
   return false;
 }
 
