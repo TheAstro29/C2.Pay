@@ -783,3 +783,15 @@ html.tv-on, html.tv-on body { overflow: hidden; }
 .vlist { display: flex; flex-direction: column; gap: 8px; }
 .vrow { display: grid; grid-template-columns: minmax(0,1.1fr) minmax(0,.8fr) minmax(0,1.2fr) 110px auto; gap: 6px; align-items: center; }
 @container app (max-width: 760px) { .vrow { grid-template-columns: minmax(0,1fr) minmax(0,1fr) 40px; padding-bottom: 8px; border-bottom: 1px dashed var(--line); } .vrow > input[data-k="name"] { grid-column: 1; grid-row: 2; } .vrow > select { grid-column: 2 / 4; grid-row: 2; } .vrow > .btn { grid-column: 3; grid-row: 1; } }
+
+/* ===== CEO: ตัดสินทีละรายการ (รอบแก้) ===== */
+.ceobar { display: flex; gap: 8px; flex-wrap: wrap; } .ceobar .btn { flex: 1; min-height: 40px; }
+.ceoit { border-left: 3px solid transparent; padding-left: 10px; margin-left: -10px; transition: background .2s, border-color .2s; }
+.ceoit.kept { border-left-color: var(--good); } .ceoit.dropped { border-left-color: var(--bad); }
+.ceoit.flash { background: var(--warn-bg); }
+.ceono { width: 24px; height: 24px; border-radius: 50%; background: var(--soft); border: 1px solid var(--line); display: grid; place-items: center; font-size: 12px; flex: none; margin-top: 1px; }
+.ceoit .viewbtn { margin-top: 8px; width: 100%; justify-content: center; min-height: 38px; }
+.seg button { min-height: 44px; }
+.df .ceosum { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13.5px; padding: 0 2px 8px; }
+#ceoOk.wait { background: var(--soft); color: var(--sub); border-color: var(--line); }
+.ceoback { display: flex; align-items: center; gap: 6px; width: 100%; border: 0; border-bottom: 1px solid var(--line); background: var(--warn-bg); color: var(--warn); font: inherit; font-weight: 600; font-size: 13.5px; padding: 12px 16px; text-align: left; min-height: 48px; }

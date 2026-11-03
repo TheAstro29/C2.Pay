@@ -697,7 +697,7 @@ function vReq() {
 
 // ---------- รายละเอียดใบ (drawer) ----------
 function openDrawer(html) { $('#drawer').innerHTML = html; $('#drawer').classList.add('on'); $('#scrim').classList.add('on'); }
-function closeDrawer() { $('#drawer').classList.remove('on'); $('#scrim').classList.remove('on'); ST.openNo = null; }
+function closeDrawer() { $('#drawer').classList.remove('on'); $('#scrim').classList.remove('on'); ST.openNo = null; ST.ceoBack = null; }
 const fileBtn = (f, label) => f ? `<button class="btn sm" data-act="fileView" data-v="${esc(f.path)}">${ms(f.type === 'application/pdf' ? 'picture_as_pdf' : 'image')}${esc(label || f.name || 'ไฟล์')}</button>` : '';
 function drawDoc(no) {
   const d = doc(no); if (!d) { closeDrawer(); return; }
@@ -1910,26 +1910,41 @@ function apvWho(b, ad) {
   return '';
 }
 
+function addBackBar(no) {
+  const dh = $('#drawer .dh'); if (!dh) return;
+  dh.insertAdjacentHTML('beforebegin', `<button class="ceoback" data-act="ceoBack">${ms('arrow_back')}กลับไปใบเสนอ <span class="num">${esc(no)}</span> (ตัดสินต่อ)</button>`);
+}
+document.addEventListener('input', (e) => { const id = e.target.dataset && e.target.dataset.cnote; if (id && ST.ceoDec) ST.ceoDec.notes[id] = e.target.value; });
+function ceoState(b) {
+  if (!ST.ceoDec || ST.ceoDec.no !== b.no) ST.ceoDec = { no: b.no, dec: {}, notes: {} };
+  return ST.ceoDec;
+}
 function drawCeo(b) {
-  ST.ceoDrop = new Set();
-  const list = b.items.map((x, i) => `<div class="ceoit" data-ci="${esc(x.id)}"><div class="ceoit-h"><span style="flex:1;min-width:0">${x.type && x.type !== 'PC' ? tpill(x.type) + ' ' : ''}<b>${esc(x.title)}</b>
-      <small>${esc(kindLabel(x))}${x.ref ? ` · <span class="num">${esc(x.ref)}</span>` : ''} · ${esc(x.payee)}${x.external ? ' · ตามใบแจ้งหนี้' : x.bank ? ` · ${esc(x.bank.bank)} <span class="num">${esc(x.bank.no)}</span>` : ''}</small></span><b class="num">${fmt(x.amount)}</b></div>
-      <div class="seg" role="group" aria-label="การตัดสินใจ ${esc(x.title)}"><button class="on ok" data-act="ceoTog" data-v="${esc(x.id)}" data-k="ok" aria-pressed="true">${ms('check')}อนุมัติ</button><button class="no" data-act="ceoTog" data-v="${esc(x.id)}" data-k="no" aria-pressed="false">${ms('close')}ไม่อนุมัติ/ให้แก้</button></div>
-      <div class="field cnote" hidden><label for="cn-${i}">เหตุผล / สิ่งที่ให้แก้</label><input class="inp" id="cn-${i}" data-cnote="${esc(x.id)}" maxlength="200" placeholder="เช่น ขอใบเสนอราคาเปรียบเทียบ"></div></div>`).join('');
+  ST.ceoBack = null; const S = ceoState(b);
+  const item = (x, i) => { const d = S.dec[x.id] || '', canView = !!x.ref;
+    return `<div class="ceoit ${d === 'no' ? 'dropped' : d === 'ok' ? 'kept' : ''}" data-ci="${esc(x.id)}">
+      <div class="ceoit-h"><span class="ceono num">${i + 1}</span><span style="flex:1;min-width:0">${x.type && x.type !== 'PC' ? tpill(x.type) + ' ' : ''}<b>${esc(x.title)}</b>
+        <small>${esc(kindLabel(x))}${x.ref ? ` · <span class="num">${esc(x.ref)}</span>` : ''} · ${esc(x.payee)}${x.external ? ' · ตามใบแจ้งหนี้' : x.bank ? ` · ${esc(x.bank.bank)} <span class="num">${esc(x.bank.no)}</span>` : ''}</small></span><b class="num amt">${fmt(x.amount)}</b></div>
+      ${canView ? `<button class="btn sm viewbtn" data-act="ceoView" data-v="${esc(x.ref)}">${ms('visibility')}ดูรายละเอียดใบนี้</button>` : `<button class="btn sm viewbtn" data-act="apvPrint" data-v="${b.no}">${ms('description')}ดูรายละเอียด (ใบเสนอ A4 หน้า 2)</button>`}
+      <div class="seg" role="group" aria-label="การตัดสินใจ ${esc(x.title)}"><button class="ok ${d === 'ok' ? 'on' : ''}" data-act="ceoTog" data-v="${esc(x.id)}" data-k="ok" aria-pressed="${d === 'ok'}">${ms(d === 'ok' ? 'check_circle' : 'check')}อนุมัติ</button><button class="no ${d === 'no' ? 'on' : ''}" data-act="ceoTog" data-v="${esc(x.id)}" data-k="no" aria-pressed="${d === 'no'}">${ms(d === 'no' ? 'cancel' : 'close')}ไม่อนุมัติ/ให้แก้</button></div>
+      <div class="field cnote" ${d === 'no' ? '' : 'hidden'}><label for="cn-${i}">เหตุผล / สิ่งที่ให้แก้</label><input class="inp" id="cn-${i}" data-cnote="${esc(x.id)}" maxlength="200" value="${esc(S.notes[x.id] || '')}" placeholder="เช่น ขอใบเสนอราคาเปรียบเทียบ"></div></div>`; };
   openDrawer(`<div class="dh"><div><div style="display:flex;gap:8px;align-items:center"><span class="tpill t-PC">APV</span><span class="pill p-pending">รอ CEO อนุมัติ</span></div><h2 class="num">${b.no}</h2></div><button class="btn sm ghost x" data-act="closeDrawer" aria-label="ปิด">${ms('close')}</button></div>
     <div class="db">${stepper(b.status)}
-      <div class="money3" style="grid-template-columns:1fr"><div class="hl"><small>ยอดรวม ${b.items.length} รายการ</small><b>${fmt(b.total)}</b><small>(${bahtText(b.total)})</small></div></div>
-      <button class="btn block" data-act="apvPrint" data-v="${b.no}">${ms('description')}ดูรายละเอียดทุกรายการ (ใบเสนอ A4)</button>
-      <div class="card"><h3>${ms('rule')}เลือกอนุมัติทีละรายการ</h3>${list}</div>
-      <div class="card ceosum" id="ceoSum"></div>
-    </div><div class="df"><button class="btn pri block" data-act="ceoApprove" id="ceoOk">${ms('verified')}อนุมัติ</button><button class="btn dout block" data-act="ceoRejectAsk">${ms('block')}ไม่อนุมัติทั้งใบ</button></div>`);
+      <div class="money3" style="grid-template-columns:1fr"><div class="hl"><small>ยอดรวม ${b.items.length} รายการ · เสนอโดย ${esc(b.createdByName || '')}</small><b>${fmt(b.total)}</b><small>(${bahtText(b.total)})</small></div></div>
+      <div class="ceobar"><button class="btn sm" data-act="ceoAll" data-v="ok">${ms('done_all')}อนุมัติทุกรายการ</button><button class="btn sm" data-act="apvPrint" data-v="${b.no}">${ms('description')}ใบเสนอ A4</button></div>
+      <div class="card"><h3>${ms('rule')}ตัดสินทีละรายการ<span class="r" id="ceoProg"></span></h3>${b.items.map(item).join('')}</div>
+    </div><div class="df"><div class="ceosum" id="ceoSum"></div><button class="btn pri block" data-act="ceoApprove" id="ceoOk">${ms('verified')}ยืนยันผลการอนุมัติ</button><button class="btn dout block" data-act="ceoRejectAsk">${ms('block')}ไม่อนุมัติทั้งใบ</button></div>`);
   ceoSum(b);
 }
 function ceoSum(b) {
-  b = b || (ST.apv && ST.apv.batches.find((x) => x.no === ST.openBatch)); if (!b) return;
-  const kept = b.items.filter((x) => !ST.ceoDrop.has(x.id)), amt = kept.reduce((t, x) => t + x.amount, 0);
-  $('#ceoSum').innerHTML = `<div class="row"><span>อนุมัติ <b>${kept.length}</b> จาก ${b.items.length} รายการ${ST.ceoDrop.size ? ` · ไม่อนุมัติ ${ST.ceoDrop.size}` : ''}</span><b class="sp num">${fmt(amt)} บาท</b></div>`;
-  const ok = $('#ceoOk'); ok.innerHTML = `${ms('verified')}อนุมัติ ${kept.length} รายการ · ${fmt(amt)} บาท`; ok.disabled = !kept.length;
+  b = b || (ST.apv && ST.apv.batches.find((x) => x.no === ST.openBatch)); if (!b || !$('#ceoSum')) return;
+  const S = ceoState(b), ok = b.items.filter((x) => S.dec[x.id] === 'ok'), no = b.items.filter((x) => S.dec[x.id] === 'no'), left = b.items.length - ok.length - no.length;
+  const amt = ok.reduce((t, x) => t + x.amount, 0);
+  $('#ceoProg').textContent = `ตัดสินแล้ว ${ok.length + no.length}/${b.items.length}`;
+  $('#ceoSum').innerHTML = `<span>${left ? `<b style="color:var(--warn)">ยังไม่ได้ตัดสิน ${left} รายการ</b>` : `อนุมัติ <b>${ok.length}</b>${no.length ? ` · ไม่อนุมัติ <b>${no.length}</b>` : ''}`}</span><b class="num">${fmt(amt)} บาท</b>`;
+  const btn = $('#ceoOk');
+  btn.innerHTML = left ? `${ms('pending')}ตัดสินให้ครบทุกรายการก่อน (เหลือ ${left})` : ok.length ? `${ms('verified')}ยืนยันอนุมัติ ${ok.length} รายการ · ${fmt(amt)} บาท` : `${ms('block')}ไม่มีรายการที่อนุมัติ · ใช้ "ไม่อนุมัติทั้งใบ"`;
+  btn.classList.toggle('wait', !!left || !ok.length);
 }
 
 /** แผ่นยืนยันรหัสผ่าน (ใช้แทนลายเซ็น) — run(password, reason) โยน error = แสดงในแผ่น ไม่ปิด */
@@ -1978,29 +1993,43 @@ function vDisplays() {
 }
 
 async function r5Click(a, v, b) {
-  if (a === 'ceoTog') {
-    const it = b.closest('.ceoit'), no = b.dataset.k === 'no';
-    if (no) ST.ceoDrop.add(v); else ST.ceoDrop.delete(v);
-    it.querySelectorAll('.seg button').forEach((x) => { const o = x.dataset.k === (no ? 'no' : 'ok'); x.classList.toggle('on', o); x.setAttribute('aria-pressed', String(o)); });
-    it.classList.toggle('dropped', no); const f = it.querySelector('.cnote'); f.hidden = !no; if (no) f.querySelector('input').focus();
-    ceoSum(); return true;
+  if (a === 'ceoTog' || a === 'ceoAll') {
+    const bt = ST.apv && ST.apv.batches.find((x) => x.no === ST.openBatch); if (!bt) return true;
+    const S = ceoState(bt);
+    if (a === 'ceoAll') bt.items.forEach((x) => { S.dec[x.id] = 'ok'; });
+    else S.dec[v] = b.dataset.k;
+    document.querySelectorAll('.ceoit').forEach((it) => {
+      const d = S.dec[it.dataset.ci] || '';
+      it.classList.toggle('kept', d === 'ok'); it.classList.toggle('dropped', d === 'no');
+      it.querySelectorAll('.seg button').forEach((x) => { const o = x.dataset.k === d; x.classList.toggle('on', o); x.setAttribute('aria-pressed', String(o)); x.querySelector('.ms').textContent = x.dataset.k === 'ok' ? (o ? 'check_circle' : 'check') : (o ? 'cancel' : 'close'); });
+      const f = it.querySelector('.cnote'); const wasHidden = f.hidden; f.hidden = d !== 'no'; if (a === 'ceoTog' && it.dataset.ci === v && d === 'no' && wasHidden) f.querySelector('input').focus();
+    });
+    ceoSum(bt); return true;
   }
+  if (a === 'ceoView') {
+    if (!ST.trv) { await busy(b, async () => { ST.trv = await api('trvList'); }); }
+    if (!doc(v)) { toast('ไม่พบใบนี้ · กดโหลดใหม่', 'error'); return true; }
+    const no = ST.openBatch; drawDoc(v); ST.ceoBack = no; addBackBar(no); return true;
+  }
+  if (a === 'ceoBack') { const no = ST.ceoBack; ST.ceoBack = null; drawBatch(no); return true; }
   if (a === 'ceoApprove') {
     const bt = ST.apv.batches.find((x) => x.no === ST.openBatch); if (!bt) return true;
-    const keep = bt.items.filter((x) => !ST.ceoDrop.has(x.id)).map((x) => x.id);
+    const S = ceoState(bt), left = bt.items.filter((x) => !S.dec[x.id]);
+    if (left.length) { toast(`ยังไม่ได้ตัดสิน ${left.length} รายการ · กด "อนุมัติ" หรือ "ไม่อนุมัติ" ให้ครบ`, 'error'); const el = document.querySelector(`.ceoit[data-ci="${CSS.escape(left[0].id)}"]`); if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 1200); } return true; }
+    const keep = bt.items.filter((x) => S.dec[x.id] === 'ok').map((x) => x.id);
     if (!keep.length) { toast('ไม่มีรายการที่อนุมัติ · ถ้าไม่อนุมัติทั้งใบ กด "ไม่อนุมัติทั้งใบ"', 'error'); return true; }
     const notes = {}, chk = [];
-    document.querySelectorAll('[data-cnote]').forEach((el) => { if (ST.ceoDrop.has(el.dataset.cnote)) { notes[el.dataset.cnote] = el.value.trim(); chk.push([el, 'เหตุผลที่ไม่อนุมัติ']); } });
+    document.querySelectorAll('[data-cnote]').forEach((el) => { if (S.dec[el.dataset.cnote] === 'no') { notes[el.dataset.cnote] = el.value.trim(); chk.push([el, 'เหตุผลที่ไม่อนุมัติ']); } });
     if (chk.length && !need(chk)) return true;
-    const amt = bt.items.filter((x) => keep.includes(x.id)).reduce((t, x) => t + x.amount, 0);
-    pwSheet({ title: 'ยืนยันการอนุมัติ', desc: `อนุมัติ <b>${keep.length}</b> รายการ <b class="num">${fmt(amt)}</b> บาท${ST.ceoDrop.size ? ` · ไม่อนุมัติ ${ST.ceoDrop.size} รายการ` : ''}<br>การกดยืนยันมีผลแทนลายเซ็นบนใบเสนอ`, btn: 'ยืนยันและลงนามอิเล็กทรอนิกส์', icon: 'draw' },
-      async (password) => { const r = await api('apvCeoApp', { no: bt.no, keep, notes, password }); await loadApv(); drawBatch(bt.no); toast(`อนุมัติ ${bt.no} แล้ว · ${r.kept} รายการ${r.dropped ? ` · ${r.dropped} รายการกลับไปรอ` : ''}`, 'verified'); });
+    const amt = bt.items.filter((x) => keep.includes(x.id)).reduce((t, x) => t + x.amount, 0), nNo = bt.items.length - keep.length;
+    pwSheet({ title: 'ยืนยันการอนุมัติ', desc: `อนุมัติ <b>${keep.length}</b> รายการ <b class="num">${fmt(amt)}</b> บาท${nNo ? ` · ไม่อนุมัติ ${nNo} รายการ (กลับไปให้ Admin แก้)` : ''}<br>การกดยืนยันมีผลแทนลายเซ็นบนใบเสนอ`, btn: 'ยืนยันและลงนามอิเล็กทรอนิกส์', icon: 'draw' },
+      async (password) => { const r = await api('apvCeoApp', { no: bt.no, keep, notes, password }); ST.ceoDec = null; await loadApv(); drawBatch(bt.no); toast(`อนุมัติ ${bt.no} แล้ว · ${r.kept} รายการ${r.dropped ? ` · ${r.dropped} รายการกลับไปรอ` : ''}`, 'verified'); });
     return true;
   }
   if (a === 'ceoRejectAsk') {
     const no = ST.openBatch;
     pwSheet({ title: 'ไม่อนุมัติทั้งใบ', desc: `ใบเสนอ <b class="num">${esc(no)}</b> จะถูกยกเลิก ทุกรายการกลับไปรอเข้าใบเสนอใหม่ พร้อมเหตุผลของคุณให้ Admin เห็น`, reason: 'เหตุผลที่ไม่อนุมัติ', btn: 'ยืนยันไม่อนุมัติทั้งใบ', icon: 'block', danger: true },
-      async (password, note) => { await api('apvCeoReject', { no, note, password }); await loadApv(); closeDrawer(); render(); toast(`ไม่อนุมัติ ${no} แล้ว · รายการกลับไปรอ`, 'block'); });
+      async (password, note) => { await api('apvCeoReject', { no, note, password }); ST.ceoDec = null; await loadApv(); closeDrawer(); render(); toast(`ไม่อนุมัติ ${no} แล้ว · รายการกลับไปรอ`, 'block'); });
     return true;
   }
   if (a === 'dispPair') {
