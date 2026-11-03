@@ -832,3 +832,14 @@ html.tv-on, html.tv-on body { overflow: hidden; }
 .mrow > .ms:first-child { color: var(--brand); } .mrow > span:not(.ms):not(.badge) { flex: 1; } .mrow small { display: block; color: var(--sub); font-size: 11.5px; } .mrow > .ms:last-child { color: var(--sub); }
 .mout { display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--bad); background: none; border: 1px solid var(--line); border-radius: 12px; min-height: 46px; font: inherit; font-weight: 600; margin-top: 4px; }
 .mfoot { text-align: center; color: var(--sub); font-size: 11px; }
+
+/* ===== ล็อกหน้าจอมือถือ (Safari iOS / Android) ===== */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; touch-action: manipulation; }
+html, body { overflow: hidden; overscroll-behavior: none; }
+body { position: fixed; inset: 0; width: 100%; height: 100%; height: 100dvh; }
+.view, .db, .printv .pages, .auth, .tvx.narrow, .psh, .ta, #view .tablewrap { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.auth { overflow-y: auto; }
+.bnav, .top, .df, .dh, .pbar { touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+button, .btn, [data-act] { -webkit-tap-highlight-color: transparent; }
+@media (hover: none) and (pointer: coarse) { input.inp, select.sel, textarea.inp { font-size: 16px; } }
+@media print { html, body { position: static !important; overflow: visible !important; height: auto !important; } }

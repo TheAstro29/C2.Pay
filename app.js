@@ -2236,5 +2236,12 @@ document.addEventListener('click', (e) => {
   else if (b.dataset.act === 'tvExit') { e.stopImmediatePropagation(); stopTV(); $('#stage').hidden = false; }
 }, true);
 
+
+// ===== ล็อกหน้าจอมือถือ: ห้ามซูม (นิ้วถ่าง / แตะสองครั้ง) · ห้ามทั้งหน้าเลื่อนเด้ง (เลื่อนได้เฉพาะเนื้อหาข้างใน) =====
+['gesturestart', 'gesturechange', 'gestureend'].forEach((t) => document.addEventListener(t, (e) => e.preventDefault(), { passive: false }));
+document.addEventListener('touchmove', (e) => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
+// แตะสองครั้งเพื่อซูม: ปิดด้วย CSS touch-action: manipulation (ไม่ดักแตะ เพื่อไม่ให้กดปุ่มติดกันเร็วๆ แล้วหาย)
+window.addEventListener('scroll', () => { if (window.scrollY || window.scrollX) window.scrollTo(0, 0); }, { passive: true });
+
 boot();
 })();
