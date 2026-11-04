@@ -138,6 +138,8 @@ function showLogin(msg = '') {
 }
 
 async function logout() {
+  const pt = pLS.get(); if (pt) { try { await api('pushUnregister', { ptoken: pt }); } catch (e) {} pLS.set(''); try { await firebase.messaging().deleteToken(); } catch (e) {} }
+  ST.push = null;
   const t = getToken(); setToken(null);
   try { if (t) await FN.httpsCallable('logoutSession')({ token: t }); } catch (e) { /* ไม่เป็นไร */ }
   ST.me = null; stopTV(); showLogin();
@@ -197,6 +199,7 @@ async function bootInner() {
   authEl().hidden = true; $('#stage').hidden = false;
   if (!isAdmin() && ST.view === 'settings') ST.view = 'home';
   render();
+  if (/[?&](open|apv|view)=/.test(location.search)) deepLink(location.href);
 }
 
 // ===== navigation =====
@@ -251,6 +254,14 @@ function trialBanner() {
 }
 
 // ===== views =====
+// ----- โหมดสี: ตามเครื่อง / สว่าง / มืด (จำไว้ในเครื่องนี้) -----
+const getTheme = () => { try { return localStorage.getItem('c2pay_theme') || 'auto'; } catch (e) { return 'auto'; } };
+function setTheme(t) {
+  try { if (t === 'auto') localStorage.removeItem('c2pay_theme'); else localStorage.setItem('c2pay_theme', t); } catch (e) { /* ไม่เป็นไร */ }
+  if (t === 'auto') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', t);
+}
+const themeBox = () => { const t = getTheme(); return `<div class="thm-seg" role="group" aria-label="โหมดสี">${[['auto', 'brightness_auto', 'ตามเครื่อง'], ['light', 'light_mode', 'สว่าง'], ['dark', 'dark_mode', 'มืด']].map(([k, i, l]) => `<button class="${t === k ? 'on' : ''}" data-act="setTheme" data-v="${k}" aria-pressed="${t === k}">${ms(i)}${l}</button>`).join('')}</div>`; };
+
 function vMore() {
   if (!ST.apv && (isAdmin() || isCeo())) loadApv();
   const me = ST.me, L = (ST.trv && ST.trv.list) || [], A = ST.apv;
@@ -272,7 +283,7 @@ function vMore() {
       + sec('เอกสาร', tile('go', 'claims', 'receipt_long', 'ใบเบิกทั้งหมด', `${L.length} ใบ · ค้นหา · กรองสถานะ`) + tile('tvView', '', 'tv', 'หน้าจอสรุป (TV)', 'ดูตัวอย่าง'))
       + `<div class="msec">ระบบ</div><button class="mrow" data-act="go" data-v="settings">${ms('settings')}<span>ตั้งค่า<small>อัตรา · รถ · ผู้ใช้ · จอแสดงผล</small></span>${ST.trialMode && isCust() ? '<span class="badge">ทดลอง</span>' : ''}${ms('chevron_right')}</button>`;
   }
-  return `<div class="mmore">${head}${body}<button class="mout" data-act="logout">${ms('logout')}ออกจากระบบ</button><div class="mfoot">C2-Pay · ${VERSION}</div></div>`;
+  return `<div class="mmore">${head}${body}<div class="msec">โหมดสี</div>${themeBox()}<button class="mout" data-act="logout">${ms('logout')}ออกจากระบบ</button><div class="mfoot">C2-Pay · ${VERSION}</div></div>`;
 }
 function vProfile() {
   const me = ST.me;
@@ -281,21 +292,71 @@ function vProfile() {
       <dt>สิทธิ์ C2-Pay</dt><dd>${ROLE_LABEL[me.role]}${me.isCustodian ? ' · ผู้ดูแลเลขบัญชี' : ''}</dd><dt>C2-Calendar</dt><dd>${esc(me.calRole)}</dd>
       <dt>บัญชีรับเงิน</dt><dd>${me.bank ? `${esc(me.bank.bank)} <span class="num">${esc(me.bank.no)}</span><br><span style="color:var(--sub);font-size:12.5px">ชื่อบัญชี ${esc(me.bank.name)} · แก้ล่าสุด ${dtTime(me.bank.changedAt)}</span>` : 'ยังไม่มี'}</dd></dl>
       <p class="formula" style="margin:10px 0 0">${ms('lock', 'style="font-size:15px;vertical-align:-3px"')} เลขบัญชีเพิ่ม/แก้ได้โดยผู้ดูแลเลขบัญชีเท่านั้น (${esc(ST.custodianName)}) · เปลี่ยนรหัสผ่านที่ C2-Calendar</p></div>
-    ${waCard()}<div class="card"><h3>${ms('logout')}ออกจากระบบ</h3><p style="margin:0 0 10px;color:var(--sub)">ออกจาก C2-Pay บนอุปกรณ์นี้ (C2-Calendar ไม่ถูกออกจากระบบ)</p><button class="btn" data-act="logout">${ms('logout')}ออกจากระบบ</button></div></div>`;
+    ${waCard()}${pushCard()}<div class="card"><h3>${ms('contrast')}โหมดสี</h3>${themeBox()}</div><div class="card"><h3>${ms('logout')}ออกจากระบบ</h3><p style="margin:0 0 10px;color:var(--sub)">ออกจาก C2-Pay บนอุปกรณ์นี้ (C2-Calendar ไม่ถูกออกจากระบบ)</p><button class="btn" data-act="logout">${ms('logout')}ออกจากระบบ</button></div></div>`;
 }
 
 // ---------- settings ----------
 function vSettings() {
-  const tabs = [['general', 'tune', 'ค่าทั่วไป'], ['users', 'group', 'ผู้ใช้และเลขบัญชี'], ['display', 'tv', 'จอแสดงผล'], ['history', 'history', 'ประวัติ']];
-  if (ST.trialMode && isCust()) tabs.push(['trial', 'science', 'โหมดทดลองใช้']);
+  const tabs = [['general', 'tune', 'ทั่วไป'], ['users', 'group', 'ผู้ใช้ · บัญชี'], ['display', 'tv', 'จอแสดงผล'], ['history', 'history', 'ประวัติ']];
+  if (ST.trialMode && isCust()) tabs.push(['trial', 'science', 'ทดลอง']);
   if (!tabs.some((t) => t[0] === ST.setTab)) ST.setTab = 'general';
   const t = `<div class="tabs" role="tablist">${tabs.map(([k, i, l]) => `<button role="tab" class="${ST.setTab === k ? 'on' : ''}" data-act="setTab" data-v="${k}" ${k === 'trial' ? 'style="color:var(--bad)"' : ''}>${ms(i)}${l}</button>`).join('')}</div>`;
   if (ST.setTab === 'users') return t + vUsers();
   if (ST.setTab === 'history') return t + vHistory();
   if (ST.setTab === 'display') return t + vDisplays();
   if (ST.setTab === 'trial') return t + vTrial();
-  return t + vGeneral();
+  return t + `<div class="gen-acc">${vGeneral()}</div>`;
 }
+
+// ----- ตั้งค่า → ทั่วไป: หดเป็นหมวด (หัวหมวดสรุปค่าปัจจุบัน) + แถบบันทึกลอย -----
+function genSummary(key) {
+  const D = ST.draft || {}, s = D.settings || {}, S = ST.settings;
+  const V = D.vehicles || [], ev = V.filter((v) => v.car === 'ev').length;
+  return ({
+    local_gas_station: `น้ำมัน ${s.kmPerL} กม./ลิตร · ${s.fuelPrice} บาท · ไฟฟ้า ${s.kmPerKwh ?? 6} กม./kWh · ${s.evPrice ?? 8} บาท · เบี้ยเลี้ยง ${fmt(s.allowance)} · ที่พัก ${fmt(s.hotel)}`,
+    garage: V.length ? `${V.length} คัน · ไฟฟ้า ${ev} · น้ำมัน ${V.length - ev}` : 'ยังไม่มีรถ',
+    alarm: `ครบกำหนด ${s.clearDue} · เตือน ${s.clearWarn} · เกิน ${s.clearMax} วัน`,
+    category: `${(D.cats || []).length} หมวด`,
+    store: `${(D.customers || []).length} แห่ง · เริ่มที่ ${(D.home && D.home.name) || ''}`,
+    account_balance: `${S.settings.bankName} · ${S.settings.accCo}`,
+    map: S.hasGmaps ? 'ตั้งคีย์แล้ว' : 'ยังไม่ตั้งคีย์ · ใช้ OSRM',
+    person_add: `staff → ${ROLE_SHORT[(D.defaults || {}).staff] || '-'} · ceo → ${ROLE_SHORT[(D.defaults || {}).ceo] || '-'}`,
+  })[key] || '';
+}
+function genAccordion() {
+  const root = document.querySelector('#view .gen-acc'); if (!root) return;
+  const open = ST.accOpen || (ST.accOpen = new Set());
+  root.querySelectorAll('.stack > .card').forEach((card) => {
+    if (card.classList.contains('acc')) return;
+    const h = card.querySelector(':scope > h3'); if (!h) return;
+    const key = (h.querySelector('.ms') || {}).textContent || '';
+    card.classList.add('acc'); card.dataset.acc = key;
+    const body = document.createElement('div'); body.className = 'acc-b';
+    [...card.childNodes].filter((n) => n !== h).forEach((n) => body.appendChild(n));
+    const sum = genSummary(key);
+    const r = h.querySelector('.r');
+    h.outerHTML = `<button type="button" class="acc-h" data-acc-t="${esc(key)}" aria-expanded="${open.has(key)}"><span class="acc-i">${ms(key)}</span><span class="acc-tt"><b>${esc([...h.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join('').trim())}</b>${sum ? `<small>${esc(sum)}</small>` : ''}</span>${r ? `<span class="acc-r">${r.innerHTML}</span>` : ''}${ms('expand_more', 'class="acc-x"')}</button>`;
+    card.appendChild(body); card.classList.toggle('open', open.has(key));
+  });
+  updSaveBar();
+}
+function genDirty() {
+  const D = ST.draft, S = ST.settings; if (!D) return 0;
+  let n = 0; const o = S.settings || {};
+  Object.keys(D.settings || {}).forEach((k) => { if (String(D.settings[k]) !== String(o[k])) n++; });
+  [['cats', S.cats], ['customers', S.customers], ['home', S.home], ['defaults', S.defaults], ['vehicles', S.vehicles || []]].forEach(([k, v]) => { if (JSON.stringify(D[k]) !== JSON.stringify(v)) n++; });
+  if (D.gmapsKey) n++; if (D.orsKey) n++;
+  return n;
+}
+function updSaveBar() { const b = $('#saveBar'); if (!b) return; const n = genDirty(); b.hidden = !n; const t = $('#sbN'); if (t) t.textContent = n ? `แก้แล้ว ${n} หมวด/ค่า` : ''; }
+document.addEventListener('click', (e) => {
+  const h = e.target.closest('.acc-h'); if (!h) return;
+  const card = h.closest('.acc'), key = card.dataset.acc, open = ST.accOpen || (ST.accOpen = new Set());
+  const on = !card.classList.contains('open'); card.classList.toggle('open', on); h.setAttribute('aria-expanded', String(on));
+  if (on) open.add(key); else open.delete(key);
+});
+document.addEventListener('input', () => { if (ST.view === 'settings' && ST.setTab === 'general') setTimeout(updSaveBar, 0); });
+document.addEventListener('change', () => { if (ST.view === 'settings' && ST.setTab === 'general') setTimeout(updSaveBar, 0); });
 
 function vGeneral() {
   const S = ST.settings; if (!ST.draft) ST.draft = JSON.parse(JSON.stringify({ settings: S.settings, cats: S.cats, customers: S.customers, home: S.home, defaults: S.defaults, vehicles: S.vehicles || [] }));
@@ -336,8 +397,7 @@ function vGeneral() {
         <details style="margin-top:8px"><summary style="cursor:pointer;color:var(--sub);font-size:13px">คีย์ OpenRouteService (ไม่ต้องใส่)</summary><div class="field" style="margin-top:6px"><label for="s-ors">API key</label><input class="inp" id="s-ors" type="password" autocomplete="off" data-ors="1" value="${esc(D.orsKey || '')}" placeholder="${S.hasOrs ? 'ตั้งไว้แล้ว' : 'ไม่บังคับ'}"></div></details></div>
       <div class="card"><h3>${ms('person_add')}สิทธิ์เริ่มต้นของบัญชีใหม่</h3><p class="formula" style="margin:0 0 8px">คนใหม่ใน C2-Calendar ได้สิทธิ์ตามนี้ทันที · Admin ของ C2-Pay ต้องตั้งเองรายคนเสมอ</p>
         <div class="fgrid" style="grid-template-columns:1fr"><div class="field"><label for="df-staff">staff ใน C2-Calendar</label>${roleSel('staff')}</div><div class="field"><label for="df-ceo">ceo ใน C2-Calendar</label>${roleSel('ceo')}</div><div class="field"><label for="df-admin">admin ใน C2-Calendar</label>${roleSel('admin')}</div></div></div>
-      <div class="card" style="position:sticky;top:0"><button class="btn pri block" data-act="saveSettings">${ms('save')}บันทึกค่าทั่วไป</button><button class="btn ghost block" data-act="resetDraft" style="margin-top:6px">ยกเลิกการแก้</button></div>
-    </div></div>`;
+    </div></div><div class="savebar" id="saveBar" hidden>${ms('save')}<span class="sb-t">บันทึกการแก้ไข<small id="sbN"></small></span><button class="btn ghost sm" data-act="resetDraft">ยกเลิก</button><button class="btn sm sb-go" data-act="saveSettings">${ms('check')}บันทึก</button></div>`;
 }
 
 function bankForm(target, m) {
@@ -481,11 +541,19 @@ function statusPill(d) {
   const m = ST_LABEL[d.status] || ['p-mute', d.status]; return `<span class="pill ${m[0]}">${m[1]}</span>`;
 }
 function docCard(d, act = 'openDoc') {
-  const cs = clearState(d), mine = d.staffId === ST.me.id;
+  const cs = clearState(d), mine = d.staffId === ST.me.id, trv = !d.type || d.type === 'TRV';
   const hint = mine && d.status === 'returned' ? 'แก้ไขแล้วส่งใหม่' : mine && d.status === 'open' ? (d.clearReturn ? 'admin ส่งเคลียร์กลับให้แก้' : cs ? cs.txt : '') : mine && d.status === 'refund' ? `นำเงินคืน ${fmt(-d.diff)} บาทให้ admin` : '';
-  return `<div class="card ccard tcard" role="button" tabindex="0" data-act="${act}" data-v="${d.no}"><div class="row">${statusPill(d)}${!mine && !isAdmin() && !isCeo() ? '<span class="pill p-mute">ร่วมเดินทาง</span>' : ''}<span class="sp amt">${fmt(d.status === 'closed' && d.actual ? d.actual.total : d.requested)}</span></div>
-    <b style="font-weight:600">${d.type && d.type !== 'TRV' ? tpill(d.type) + ' ' : ''}${esc(d.title)}</b><span class="route-s">${isAdmin() || isCeo() ? esc(whoOf(d)) + ' · ' : ''}${subLine(d)}</span>
-    <div class="row">${avs(d.travelers || [])}<small class="num">${d.no}</small>${hint ? `<span class="sp todo-hint" style="color:var(--warn);font-size:12.5px">${esc(hint)}</span>` : ''}</div></div>`;
+  const stops = d.stops || [];
+  const where = trv ? (stops.length === 1 ? esc(String(stops[0]).split(' · ')[0]) + (String(stops[0]).includes(' · ') ? ` (${place(stops[0])})` : '') : stops.map(place).join(' → '))
+    : esc(d.customer || d.cat || TYPE_LABEL[d.type] || '');
+  const who = isAdmin() || isCeo() ? whoOf(d) : d.staffName;
+  const amt = d.status === 'closed' && d.actual ? d.actual.total : d.requested;
+  const mi = (ic, t, cls = '') => t ? `<span class="${cls}">${ms(ic)}<span>${t}</span></span>` : '';
+  return `<div class="card dcard tcard" role="button" tabindex="0" data-act="${act}" data-v="${d.no}">
+    <div class="dc-h"><b class="dc-t">${esc(d.title)}</b><span class="dc-amt num">${fmt(amt)}<small>บาท</small></span></div>
+    <div class="dc-m">${mi('person', esc(who || ''), 'dc-who')}${mi('event', trv ? dRange(d.go, d.back) : dt(d.go), 'dc-dt')}${mi(trv ? (stops.length > 1 ? 'route' : 'location_on') : d.type === 'EXP' ? 'category' : 'storefront', where, 'dc-wh')}</div>
+    ${hint ? `<div class="dc-hint">${ms('priority_high')}${esc(hint)}</div>` : ''}
+    <div class="dc-f">${tpill(d.type || 'TRV')}${statusPill(d)}${!mine && !isAdmin() && !isCeo() ? '<span class="pill p-mute">ร่วมเดินทาง</span>' : ''}<span class="dc-no num">${d.no}</span></div></div>`;
 }
 const listOr = (arr, empty, act) => arr.length ? `<div class="stack">${arr.map((d) => docCard(d, act)).join('')}</div>` : `<div class="card empty">${empty}</div>`;
 
@@ -503,14 +571,14 @@ function vDash() {
   const open = L.filter((d) => d.status === 'open'), late = open.filter((d) => ['late', 'warn'].includes((clearState(d) || {}).lv));
   const payq = L.filter((d) => d.status === 'approve' || (d.status === 'topup' && d.settleSrc === 'BANK'));
   const payAmt = payq.reduce((t, d) => t + (d.status === 'approve' ? d.requested : d.diff), 0);
-  const kpi = (v, i, lab, val, meta, tone) => `<button class="card kpi" data-act="go" data-v="${v}"><span class="lab">${ms(i, 'style="font-size:18px"')}${lab}</span><span class="val" ${tone ? `style="color:var(--${tone})"` : ''}>${val}</span><span class="meta">${meta}</span></button>`;
+  const kpi = (v, i, lab, val, meta, tone) => `<button class="card kpi ${tone === 'bad' ? 'kbad' : ''}" data-act="go" data-v="${v}"><span class="lab">${ms(i, 'style="font-size:18px"')}${lab}</span><span class="val" ${tone ? `style="color:var(--${tone})"` : ''}>${val}</span><span class="meta">${meta}</span></button>`;
   const lowPc = ST.trv.pcBalance < s.lowAlert;
   return `${trialBanner()}${vHomeNotice()}
     <div class="grid kpis" style="margin-top:12px">
       ${kpi('inbox', 'inbox', 'คำขอรอตรวจ', sub.length + clr.length, `ขอเบิก ${sub.length} · ส่งเคลียร์ ${clr.length}`, sub.length + clr.length ? 'warn' : '')}
-      ${kpi('payq', 'approval', 'รอโอน (ผ่านใบเสนอ CEO)', fmt(payAmt), `${payq.length} รายการ${payq.some((d) => !d.batch) ? ` · รอเข้าใบเสนอ ${payq.filter((d) => !d.batch).length}` : ''}`, '')}
+      ${kpi('payq', 'approval', 'รอโอน', fmt(payAmt), `${payq.length} รายการ · ผ่าน CEO${payq.some((d) => !d.batch) ? ` · รอเข้าใบเสนอ ${payq.filter((d) => !d.batch).length}` : ''}`, '')}
       ${kpi('clear', 'fact_check', 'ค้างเคลียร์', open.length, late.length ? `ใกล้/เกินกำหนด ${late.length} ใบ` : 'ไม่มีใบเกินกำหนด', late.length ? 'bad' : '')}
-      ${kpi('pc', 'savings', 'เงินสดย่อยคงเหลือ', fmt(ST.trv.pcBalance), lowPc ? `ต่ำกว่า ${fmt(s.lowAlert)} · ควรเติม` : 'ปกติ', lowPc ? 'bad' : '')}</div>
+      ${kpi('pc', 'savings', 'เงินสดย่อย', fmt(ST.trv.pcBalance), lowPc ? `ต่ำกว่า ${fmt(s.lowAlert)} · ควรเติม` : 'คงเหลือ · ปกติ', lowPc ? 'bad' : '')}</div>
     <div class="grid g2" style="margin-top:14px"><div><h3 style="font-size:14px;color:var(--sub);margin:0 0 8px">ใบเบิกล่าสุด</h3>${listOr(L.slice(0, 6), 'ยังไม่มีใบเบิก · กด "ขอเบิกค่าเดินทาง" เพื่อเริ่ม')}</div>
       <div class="stack">${isAdmin() ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><button class="btn pri block" data-act="newReq" style="height:44px">${ms('route')}ขอเบิกค่าเดินทาง</button><button class="btn block" data-act="go" data-v="new" style="height:44px">${ms('add')}ใบอื่น (ADV/RMB/EXP)</button></div>` : ''}
       ${(() => { const pen = L.filter((d) => d.status === 'pending'); return pen.length ? `<button class="card kpi" data-act="go" data-v="inbox" style="flex-direction:row;align-items:center;gap:12px">${ms('receipt')}<span style="flex:1;text-align:left">เบิกคืนรอจ่าย ${pen.length} ใบ</span><b class="num">${fmt(pen.reduce((t, d) => t + d.requested, 0))}</b></button>` : ''; })()}
@@ -526,7 +594,7 @@ function vMyTrips() {
   const me = ST.me.id, mine = ST.trv.list.filter((d) => (d.travelerIds || []).includes(me)).sort((a, b) => b.go.localeCompare(a.go));
   const todo = mine.filter((d) => d.staffId === me && ['returned', 'open', 'refund'].includes(d.status));
   const done = mine.filter((d) => ['closed', 'rejected'].includes(d.status)), wait = mine.filter((d) => !todo.includes(d) && !done.includes(d));
-  const grp = (t, i, l) => l.length ? `<div class="tgrp"><h3>${ms(i, 'style="font-size:18px"')}${t} · ${l.length}</h3>${l.map((d) => docCard(d)).join('')}</div>` : '';
+  const grp = (t, i, l) => l.length ? `<div class="tgrp"><h3>${ms(i, 'style="font-size:18px"')}${t}<span class="cnt">${l.length}</span></h3>${l.map((d) => docCard(d)).join('')}</div>` : '';
   const bankWarn = !ST.me.bank ? `<div class="pwbox warn" style="margin-bottom:12px">${ms('account_balance')}<span>ยังไม่มีบัญชีรับโอน · แจ้งผู้ดูแลเลขบัญชี (${esc(ST.custodianName)}) เพื่อรับเงินแบบโอน</span></div>` : '';
   return `${trialBanner()}${vHomeNotice()}<div class="hello" style="margin-top:12px"><span class="av">${esc(ST.me.name.slice(0, 1))}</span><div><b>สวัสดี ${esc(ST.me.name)}</b><small>เห็นเฉพาะทริปที่คุณร่วมเดินทาง</small></div><button class="btn pri" data-act="newReq">${ms('add')}ขอเบิกค่าเดินทาง</button></div>${bankWarn}
     <div class="grid g2e" style="align-items:start"><div>${grp('ต้องทำ', 'priority_high', todo)}${grp('รอดำเนินการ', 'hourglass_top', wait)}${mine.length ? '' : '<div class="card empty">ยังไม่มีทริป · กด "ขอเบิกค่าเดินทาง" เพื่อเริ่ม</div>'}</div><div>${grp('ปิดแล้ว', 'task_alt', done)}</div></div>`;
@@ -544,9 +612,9 @@ function vClaims() {
 function vInbox() {
   const w = needTrv(); if (w) return w;
   const sub = ST.trv.list.filter((d) => d.status === 'submitted'), clr = ST.trv.list.filter((d) => d.status === 'clearSub'), ret = ST.trv.list.filter((d) => d.status === 'returned');
-  return `<div class="grid g2e" style="align-items:start"><div><div class="tgrp"><h3>${ms('add_road', 'style="font-size:18px"')}ขอเบิกค่าเดินทาง · ${sub.length}</h3>${sub.length ? sub.map((d) => docCard(d)).join('') : '<div class="card empty">ไม่มีคำขอรออนุมัติ</div>'}</div>
-    <div class="tgrp"><h3>${ms('fact_check', 'style="font-size:18px"')}ส่งเคลียร์ รอตรวจ · ${clr.length}</h3>${clr.length ? clr.map((d) => docCard(d, 'openClr')).join('') : '<div class="card empty">ไม่มีใบส่งเคลียร์</div>'}</div></div>
-    <div>${(() => { const pen = ST.trv.list.filter((d) => d.status === 'pending'); return pen.length ? `<div class="tgrp"><h3>${ms('receipt', 'style="font-size:18px"')}เบิกคืน รอจ่าย · ${pen.length}</h3>${pen.map((d) => docCard(d)).join('')}</div>` : ''; })()}${ret.length ? `<div class="tgrp"><h3>${ms('edit_note', 'style="font-size:18px"')}ส่งกลับให้แก้ · รอส่งใหม่ · ${ret.length}</h3>${ret.map((d) => docCard(d)).join('')}</div>` : ''}</div></div>`;
+  return `<div class="grid g2e" style="align-items:start"><div><div class="tgrp"><h3>${ms('add_road', 'style="font-size:18px"')}ขอเบิกค่าเดินทาง<span class="cnt">${sub.length}</span></h3>${sub.length ? sub.map((d) => docCard(d)).join('') : '<div class="card empty">ไม่มีคำขอรออนุมัติ</div>'}</div>
+    <div class="tgrp"><h3>${ms('fact_check', 'style="font-size:18px"')}ส่งเคลียร์ รอตรวจ<span class="cnt">${clr.length}</span></h3>${clr.length ? clr.map((d) => docCard(d, 'openClr')).join('') : '<div class="card empty">ไม่มีใบส่งเคลียร์</div>'}</div></div>
+    <div>${(() => { const pen = ST.trv.list.filter((d) => d.status === 'pending'); return pen.length ? `<div class="tgrp"><h3>${ms('receipt', 'style="font-size:18px"')}เบิกคืน รอจ่าย<span class="cnt">${pen.length}</span></h3>${pen.map((d) => docCard(d)).join('')}</div>` : ''; })()}${ret.length ? `<div class="tgrp"><h3>${ms('edit_note', 'style="font-size:18px"')}ส่งกลับให้แก้ · รอส่งใหม่<span class="cnt">${ret.length}</span></h3>${ret.map((d) => docCard(d)).join('')}</div>` : ''}</div></div>`;
 }
 function vClearList() {
   const w = needTrv(); if (w) return w;
@@ -554,10 +622,10 @@ function vClearList() {
   const open = ST.trv.list.filter((d) => d.status === 'open').sort((a, b) => rank[clearState(a).lv] - rank[clearState(b).lv] || a.back.localeCompare(b.back));
   const clr = ST.trv.list.filter((d) => d.status === 'clearSub'), money = ST.trv.list.filter((d) => d.status === 'refund' || (d.status === 'topup' && d.settleSrc !== 'BANK'));
   const s = set();
-  return `<p style="margin:0 0 12px;color:var(--sub)">กฎ: เคลียร์ภายใน ${s.clearDue} วันหลังจบทริป · เตือนซ้ำวันที่ ${s.clearWarn} · เกิน ${s.clearMax} วัน = เกินกำหนด</p>
-    <div class="grid g2e" style="align-items:start"><div><div class="tgrp"><h3>${ms('pending_actions', 'style="font-size:18px"')}ยังไม่เคลียร์ · ${open.length}</h3>${open.length ? open.map((d) => docCard(d)).join('') : '<div class="card empty">ไม่มีใบค้างเคลียร์</div>'}</div></div>
-    <div><div class="tgrp"><h3>${ms('fact_check', 'style="font-size:18px"')}ส่งเคลียร์ รอตรวจ · ${clr.length}</h3>${clr.length ? clr.map((d) => docCard(d, 'openClr')).join('') : '<div class="card empty">ไม่มี</div>'}</div>
-      ${money.length ? `<div class="tgrp"><h3>${ms('currency_exchange', 'style="font-size:18px"')}รอรับคืน / รอจ่ายส่วนต่าง · ${money.length}</h3>${money.map((d) => docCard(d)).join('')}</div>` : ''}</div></div>`;
+  return `<div class="infob">${ms('info')}<span>เคลียร์ภายใน <b>${s.clearDue}</b> วันหลังจบทริป · เตือนวันที่ <b>${s.clearWarn}</b> · เกิน <b>${s.clearMax}</b> วัน = เกินกำหนด</span></div>
+    <div class="grid g2e" style="align-items:start"><div><div class="tgrp"><h3>${ms('pending_actions', 'style="font-size:18px"')}ยังไม่เคลียร์<span class="cnt">${open.length}</span></h3>${open.length ? open.map((d) => docCard(d)).join('') : '<div class="card empty">ไม่มีใบค้างเคลียร์</div>'}</div></div>
+    <div><div class="tgrp"><h3>${ms('fact_check', 'style="font-size:18px"')}ส่งเคลียร์ รอตรวจ<span class="cnt">${clr.length}</span></h3>${clr.length ? clr.map((d) => docCard(d, 'openClr')).join('') : '<div class="card empty">ไม่มี</div>'}</div>
+      ${money.length ? `<div class="tgrp"><h3>${ms('currency_exchange', 'style="font-size:18px"')}รอรับคืน / รอจ่ายส่วนต่าง<span class="cnt">${money.length}</span></h3>${money.map((d) => docCard(d)).join('')}</div>` : ''}</div></div>`;
 }
 
 // ---------- ฟอร์มขอเบิก ----------
@@ -1509,6 +1577,7 @@ document.addEventListener('click', async (e) => {
     if (a === 'refresh') return busy(b, async () => { if (await reloadMe()) { ST.members = null; ST.bankLog = null; ST.wiz.counts = null; ST.draft = null; ST.trv = null; ST.payq = null; ST.pc = null; ST.ledger = null; ST.apv = null; render(); toast('โหลดข้อมูลใหม่แล้ว'); } });
     if (await trvClick(a, v, b)) return;
     if (await r5Click(a, v, b)) return;
+    if (await pushClick(a, v, b)) return;
     if (a === 'ackNotice') return busy(b, async () => { await api('ackNotice'); ST.me.bankNotice = null; render(); });
     if (a === 'setTab') { ST.setTab = v; ST.bankEdit = null; if (v === 'trial') { ST.wiz = { step: 1, scope: 'A', counts: null, dl: { json: false, xlsx: false } }; backupCache = null; } if (v === 'history') ST.bankLog = null; render(); return; }
     // settings
@@ -1886,6 +1955,7 @@ document.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key ==
 let cdTimer = null;
 function afterRender() {
   waDecorate();
+  genAccordion();
   // ช่องยืนยันขั้น 3: ปุ่มลบกดได้หลังพิมพ์ข้อความ + รหัสผ่าน แล้วรอ 5 วินาที
   const t = $('#cf-t'), p = $('#cf-p'), go = $('#cf-go');
   if (t && p && go) {
@@ -1934,7 +2004,7 @@ function vCeoq() {
     <button class="btn pri block" style="margin-top:10px" data-act="openBatch" data-v="${b.no}">${ms('verified')}ตรวจและอนุมัติ</button></div>`;
   const row = (b) => `<button class="card bcard" style="text-align:left" data-act="openBatch" data-v="${b.no}"><div class="row"><b class="num">${b.no}</b>${b.ceoReject ? '<span class="pill p-mute">ไม่อนุมัติทั้งใบ</span>' : `<span class="pill p-closed">อนุมัติแล้ว${b.ceoApp ? ' · ผ่านแอป' : ' · เซ็นเอกสาร'}</span>`}<span class="sp num" style="font-weight:700">${fmt(b.total)}</span></div>
     <small style="color:var(--sub)">${b.ceoReject ? `${dtTime(b.ceoReject.at)} · ${esc(b.ceoReject.note)}` : `${dtTime(b.ceoAt)} · ${STAGE[b.status]}`}</small></button>`;
-  return `<div class="grid g2" style="align-items:start"><div class="stack"><h3 class="sech">${ms('pending_actions')}รอ CEO อนุมัติ · ${wait.length}</h3>${wait.length ? wait.map(card).join('') : '<div class="card empty">ไม่มีใบเสนอรออนุมัติ</div>'}</div>
+  return `<div class="grid g2" style="align-items:start"><div class="stack"><h3 class="sech">${ms('pending_actions')}รอ CEO อนุมัติ<span class="cnt">${wait.length}</span></h3>${wait.length ? wait.map(card).join('') : '<div class="card empty">ไม่มีใบเสนอรออนุมัติ</div>'}</div>
     <div class="stack"><h3 class="sech">${ms('history')}ตัดสินใจล่าสุด</h3>${done.length ? done.map(row).join('') : '<div class="card empty">ยังไม่มี</div>'}</div></div>`;
 }
 
@@ -2155,6 +2225,7 @@ async function r5Click(a, v, b) {
     return true;
   }
   if (a === 'tvView') { closeDrawer(); startTV('preview'); return true; }
+  if (a === 'setTheme') { setTheme(v); render(); return true; }
   if (a === 'waAdd') { waAddFlow(); return true; }
   if (a === 'waRemove') { if (ST.waAsk !== v) { ST.waAsk = v; render(); return true; } await busy(b, async () => { await api('waRemove', { id: v }); ST.waAsk = null; await waInit(); render(); toast('ลบเครื่องแล้ว'); }); return true; }
   if (a === 'waInline') {
@@ -2335,6 +2406,96 @@ document.addEventListener('focusout', () => setTimeout(() => { if (!isField(docu
 // แผ่นยืนยันรหัสผ่าน: วางในพื้นที่ที่มองเห็นจริง (เหนือคีย์บอร์ด) ด้วย visualViewport
 function vvSync() { const v = window.visualViewport; if (!v) return; const r = document.documentElement.style; r.setProperty('--vvh', `${Math.round(v.height)}px`); r.setProperty('--vvt', `${Math.round(v.offsetTop)}px`); }
 if (window.visualViewport) { window.visualViewport.addEventListener('resize', vvSync); window.visualViewport.addEventListener('scroll', vvSync); vvSync(); }
+
+// ===== แจ้งเตือน (push) — ทำงานแม้ปิดแอป · แตะแล้วเปิดใบนั้นในแอป =====
+const VAPID = 'BILlcL9DwhAa7uVz8nFD_uS3ZNMa93EKewWzNQpNv-8RvIMFDb78g5DbKc94Y2iPfuQEGZNyWfyxPEoLc0EiSEM';
+const PTOKEN_KEY = 'c2pay_ptoken';
+const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const isStandalone = () => (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+function pushEnv() {
+  const base = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && window.isSecureContext;
+  let fcm = false; try { fcm = !!(window.firebase && firebase.messaging && firebase.messaging.isSupported()); } catch (e) { fcm = false; }
+  if (base && fcm) return { ok: true };
+  if (isIOS() && !isStandalone()) return { ok: false, why: 'ios' };
+  return { ok: false, why: 'browser' };
+}
+const pLS = { get: () => { try { return localStorage.getItem(PTOKEN_KEY) || ''; } catch (e) { return ''; } }, set: (t) => { try { t ? localStorage.setItem(PTOKEN_KEY, t) : localStorage.removeItem(PTOKEN_KEY); } catch (e) {} } };
+const PUSH_OPTS = {
+  admin: [['req', 'inbox', 'คำขอใหม่จากทีมงาน', 'ขอเบิก · ส่งเคลียร์ · ขอต่อทริป'], ['ceoResult', 'verified', 'ผลจาก CEO', 'อนุมัติ / ไม่อนุมัติใบเสนอ'], ['clear', 'alarm', 'เคลียร์เงินเกินกำหนด', 'สรุปทุกเช้า 08:30'], ['pc', 'savings', 'เงินสดย่อยต่ำ', 'เตือนเมื่อต่ำกว่าเกณฑ์'], ['mine', 'person', 'ใบของฉัน', 'อนุมัติ · โอนเงินแล้ว']],
+  ceo: [['ceo', 'approval', 'ใบเสนอรอ CEO อนุมัติ', 'แตะแล้วเปิดใบเสนอนั้นทันที']],
+  user: [['mine', 'receipt_long', 'ผลคำขอของฉัน', 'อนุมัติ · ส่งกลับให้แก้ · โอนเงินแล้ว'], ['clear', 'alarm', 'เตือนเคลียร์เงิน', 'ทุกเช้า 08:30 เมื่อใกล้/เกินกำหนด']],
+};
+async function pushRefresh() {
+  const env = pushEnv(); ST.push = { env, perm: env.ok ? Notification.permission : 'default', on: false, prefs: {}, devices: 0, loaded: true };
+  if (!env.ok || !ST.me) return;
+  try { const r = await api('pushStatus', { ptoken: pLS.get() || undefined }); Object.assign(ST.push, { on: r.on && Notification.permission === 'granted', prefs: r.prefs || {}, devices: r.devices || 0 }); } catch (e) {}
+}
+async function pushSwReg() {
+  const reg = await navigator.serviceWorker.register('c2pay-sw.js', { scope: './' });
+  if (!reg.active) await navigator.serviceWorker.ready;
+  return reg;
+}
+async function pushEnable() {
+  const p = await Notification.requestPermission();
+  if (p !== 'granted') { ST.push.perm = p; throw new Error(p === 'denied' ? 'เครื่องบล็อกการแจ้งเตือนไว้ · เปิดได้ที่ การตั้งค่า → การแจ้งเตือน → C2-Pay' : 'ยังไม่ได้อนุญาตการแจ้งเตือน'); }
+  const reg = await pushSwReg();
+  const token = await firebase.messaging().getToken({ vapidKey: VAPID, serviceWorkerRegistration: reg });
+  if (!token) throw new Error('ขอ token แจ้งเตือนไม่สำเร็จ ลองใหม่อีกครั้ง');
+  const label = isIOS() ? 'iPhone/iPad' : /Android/.test(navigator.userAgent) ? 'Android' : /Mac/.test(navigator.userAgent) ? 'Mac' : /Windows/.test(navigator.userAgent) ? 'Windows' : 'อุปกรณ์';
+  const r = await api('pushRegister', { ptoken: token, label });
+  pLS.set(token); Object.assign(ST.push, { on: true, perm: 'granted', prefs: r.prefs || {} });
+}
+async function pushDisable() {
+  const t = pLS.get();
+  try { if (t) await api('pushUnregister', { ptoken: t }); } finally {
+    try { await firebase.messaging().deleteToken(); } catch (e) {}
+    pLS.set(''); ST.push.on = false;
+  }
+}
+function pushCard() {
+  const me = ST.me; if (!me || ['none', 'guest'].includes(me.role)) return '';
+  const P = ST.push; const h = `<h3>${ms('notifications')}การแจ้งเตือน</h3>`;
+  if (!P) { setTimeout(() => pushRefresh().then(() => { if (ST.view === 'profile') render(); }), 0); return `<div class="card" id="pushCard">${h}<p style="margin:0;color:var(--sub)">กำลังตรวจสอบ…</p></div>`; }
+  if (!P.env.ok) return `<div class="card" id="pushCard">${h}<div class="infob">${ms('info')}<span>${P.env.why === 'ios' ? 'บน iPhone/iPad ต้อง<b>ติดตั้ง C2-Pay ลงหน้าจอโฮม</b>ก่อน (Safari → ปุ่มแชร์ → เพิ่มไปยังหน้าจอโฮม) แล้วเปิดจากไอคอน · ต้องเป็น iOS 16.4 ขึ้นไป' : 'เบราว์เซอร์นี้ไม่รองรับการแจ้งเตือน ลองใช้ Chrome / Edge / Safari รุ่นใหม่'}</span></div></div>`;
+  if (P.perm === 'denied') return `<div class="card" id="pushCard">${h}<div class="infob warn">${ms('notifications_off')}<span>เครื่องนี้บล็อกการแจ้งเตือนของ C2-Pay ไว้ · เปิดได้ที่ <b>การตั้งค่าเครื่อง → การแจ้งเตือน → C2-Pay</b> แล้วกลับมากดเปิดอีกครั้ง</span></div></div>`;
+  if (!P.on) return `<div class="card" id="pushCard">${h}<p style="margin:0 0 12px;color:var(--sub)">รับแจ้งเตือนบนเครื่องนี้แม้ไม่ได้เปิดแอป · แตะแจ้งเตือนแล้วเปิดใบนั้นทันที</p><button class="btn pri" data-act="pushOn">${ms('notifications_active')}เปิดการแจ้งเตือนบนเครื่องนี้</button>${P.devices ? `<p style="margin:10px 0 0;color:var(--sub);font-size:12.5px">เปิดไว้แล้วบนอุปกรณ์อื่น ${P.devices} เครื่อง</p>` : ''}</div>`;
+  const opts = PUSH_OPTS[me.role] || PUSH_OPTS.user;
+  const rows = opts.map(([k, i, t, s]) => `<label class="drow prow"><span class="dic">${ms(i)}</span><span style="flex:1;min-width:0"><b>${t}</b><small>${s}</small></span><input type="checkbox" class="pswitch" data-pk="${k}" ${P.prefs[k] !== false ? 'checked' : ''} aria-label="${t}"></label>`).join('');
+  return `<div class="card" id="pushCard">${h}<div class="pon">${ms('check_circle')}เปิดอยู่บนเครื่องนี้</div><div>${rows}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn" data-act="pushTest">${ms('send')}ส่งแจ้งเตือนทดสอบ</button><button class="btn dout" data-act="pushOff">${ms('notifications_off')}ปิดบนเครื่องนี้</button></div></div>`;
+}
+async function pushClick(a, v, b) {
+  if (a === 'pushOn') { await busy(b, async () => { try { await pushEnable(); toast('เปิดการแจ้งเตือนแล้ว', 'notifications_active'); } catch (e) { fail(e); } render(); }); return true; }
+  if (a === 'pushOff') { await busy(b, async () => { await pushDisable(); toast('ปิดการแจ้งเตือนบนเครื่องนี้แล้ว', 'notifications_off'); render(); }); return true; }
+  if (a === 'pushTest') { await busy(b, async () => { const r = await api('pushTest', { ptoken: pLS.get() }); toast(r.ok ? 'ส่งแล้ว · รอสักครู่จะเห็นแจ้งเตือน' : 'ส่งไม่สำเร็จ · ลองปิดแล้วเปิดใหม่', r.ok ? 'send' : 'error'); }); return true; }
+  return false;
+}
+document.addEventListener('change', async (e) => {
+  const el = e.target; if (!el.classList || !el.classList.contains('pswitch') || !ST.push) return;
+  const k = el.dataset.pk, val = el.checked; ST.push.prefs[k] = val; el.disabled = true;
+  try { await api('pushPrefs', { ptoken: pLS.get(), prefs: { [k]: val } }); } catch (err) { el.checked = !val; ST.push.prefs[k] = !val; fail(err); }
+  el.disabled = false;
+});
+// เปิดหน้าตามลิงก์ในแจ้งเตือน: ?open=เลขใบ · ?apv=เลขใบเสนอ · ?view=pc|clear
+async function deepLink(href) {
+  let u; try { u = new URL(href, location.href); } catch (e) { return; }
+  const open = u.searchParams.get('open'), apv = u.searchParams.get('apv'), view = u.searchParams.get('view');
+  if (!open && !apv && !view) return;
+  if (location.search) { try { history.replaceState(null, '', location.pathname + location.hash); } catch (e) {} }
+  if (!ST.me || $('#stage').hidden) return;
+  try {
+    if (open) {
+      ST.trv = await api('trvList');
+      ST.view = isAdmin() || isCeo() ? 'claims' : 'home'; render();
+      if (doc(open)) drawDoc(open); else toast('ไม่พบใบ ' + open + ' หรือไม่มีสิทธิ์ดู', 'error');
+    } else if (apv && (isAdmin() || isCeo())) {
+      ST.apv = await api('apvQueue'); ST.view = isCeo() ? 'ceoq' : 'payq'; render();
+      if (ST.apv.batches.some((x) => x.no === apv)) drawBatch(apv); else toast('ไม่พบใบเสนอ ' + apv, 'error');
+    } else if (view === 'pc' && (isAdmin() || isCeo())) { ST.pc = null; ST.view = 'pc'; closeDrawer(); render(); }
+    else if (view === 'clear') { ST.trv = null; ST.view = isAdmin() ? 'clear' : 'home'; closeDrawer(); render(); }
+  } catch (e) { fail(e); }
+}
+if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', (e) => { if (e.data && e.data.c2pay === 'open' && e.data.url) deepLink(e.data.url); });
 
 boot();
 })();
