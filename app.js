@@ -17,7 +17,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const FN = firebase.app().functions('asia-southeast1');
 const TOKEN_KEY = 'c2pay_token';
-const VERSION = 'v1.0 ทดลองใช้';
+const VERSION = 'v1.0';
 
 // ===== helpers =====
 const $ = (s, r = document) => r.querySelector(s);
