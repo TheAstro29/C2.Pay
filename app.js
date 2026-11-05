@@ -535,7 +535,17 @@ const ST_LABEL = {
   submitted: ['p-pending', 'รออนุมัติ'], returned: ['p-refund', 'ส่งกลับให้แก้ไข'], rejected: ['p-mute', 'ไม่อนุมัติ'], approve: ['p-pending', 'อนุมัติแล้ว · รอโอน'],
   open: ['p-open', 'ได้รับเงิน · รอเคลียร์'], clearSub: ['p-open', 'ส่งเคลียร์แล้ว · รอตรวจ'], refund: ['p-refund', 'รอคืนเงิน'], topup: ['p-topup', 'รอจ่ายส่วนต่าง'], closed: ['p-closed', 'ปิดแล้ว'],
 };
+const BSTAGE_PILL = { ceo: 'รอ CEO เซ็น', ceoOk: 'CEO อนุมัติ · รอส่งเรื่อง', coo: 'รอ COO โอน' };
+/** ใบที่รอโอน: บอกขั้นของใบเสนอ CEO ที่ใบนั้นอยู่จริง (เดิมขึ้น "รอโอน" เหมือนกันหมด) + ป้าย "เคลียร์แล้ว" ถ้าเคลียร์ก่อนโอน */
+function waitPill(d) {
+  const pre = d.preClear ? '<span class="pill p-pre">เคลียร์แล้ว</span>' : '';
+  if (d.batch) { const st = BSTAGE_PILL[d.batchStage]; return pre + `<span class="pill p-pending">${st || 'อยู่ในใบเสนอ'}${pre ? '' : ` · ${esc(String(d.batch).replace(/^APV-\d{4}-/, 'APV-'))}`}</span>`; }
+  return pre + `<span class="pill p-pending">${d.status === 'topup' ? 'รอโอนส่วนต่าง' : 'อนุมัติแล้ว'} · รอเข้าใบเสนอ</span>`;
+}
 function statusPill(d) {
+  if (d.tripCancelled && d.status === 'refund') return '<span class="pill p-refund">ยกเลิกทริป · รอคืนเงิน</span>';
+  if (d.tripCancelled && d.status === 'closed') return '<span class="pill p-mute">ยกเลิกทริป · คืนเงินแล้ว</span>';
+  if (!d.cancelled && (d.status === 'approve' || (d.status === 'topup' && d.settleSrc === 'BANK'))) return waitPill(d);
   const cs = clearState(d); if (cs && cs.lv !== 'ok' && cs.lv !== 'trip') return `<span class="pill ${cs.cls}">${cs.txt}</span>`;
   if (d.status === 'rejected' && d.cancelled) return '<span class="pill p-mute">ยกเลิก</span>';
   const m = ST_LABEL[d.status] || ['p-mute', d.status]; return `<span class="pill ${m[0]}">${m[1]}</span>`;
@@ -553,7 +563,7 @@ function docCard(d, act = 'openDoc') {
     <div class="dc-h"><b class="dc-t">${esc(d.title)}</b><span class="dc-amt num">${fmt(amt)}<small>บาท</small></span></div>
     <div class="dc-m">${mi('person', esc(who || ''), 'dc-who')}${mi('event', trv ? dRange(d.go, d.back) : dt(d.go), 'dc-dt')}${mi(trv ? (stops.length > 1 ? 'route' : 'location_on') : d.type === 'EXP' ? 'category' : 'storefront', where, 'dc-wh')}</div>
     ${hint ? `<div class="dc-hint">${ms('priority_high')}${esc(hint)}</div>` : ''}
-    <div class="dc-f">${tpill(d.type || 'TRV')}${statusPill(d)}${!mine && !isAdmin() && !isCeo() ? '<span class="pill p-mute">ร่วมเดินทาง</span>' : ''}<span class="dc-no num">${d.no}</span></div></div>`;
+    <div class="dc-f">${tpill(d.type || 'TRV')}${statusPill(d)}${d.type === 'EXP' && !docFiles(d).length && isAdmin() ? '<span class="pill p-mute">ยังไม่มีบิล</span>' : ''}${!mine && !isAdmin() && !isCeo() ? '<span class="pill p-mute">ร่วมเดินทาง</span>' : ''}<span class="dc-no num">${d.no}</span></div></div>`;
 }
 const listOr = (arr, empty, act) => arr.length ? `<div class="stack">${arr.map((d) => docCard(d, act)).join('')}</div>` : `<div class="card empty">${empty}</div>`;
 
@@ -814,12 +824,12 @@ function drawDoc(no) {
   const km = d.kmCalc != null && d.kmSrc === 'est' ? `<div class="banner warn">${ms('route')}<span>ระยะทางประมาณจากเส้นตรง ${fmt(d.kmCalc)} กม. (บริการแผนที่ใช้ไม่ได้ตอนส่ง) · ขอ <b>${fmt(p.km)}</b> กม.${d.kmReason ? ` · ${esc(d.kmReason)}` : ''} · ตรวจก่อนอนุมัติ</span></div>` : d.kmCalc != null ? (d.kmReason ? `<div class="banner warn">${ms('route')}<span>ระบบคำนวณ <b>${fmt(d.kmCalc)}</b> กม. · ขอ <b>${fmt(p.km)}</b> กม. · เหตุผล: ${esc(d.kmReason)}</span></div>` : '') : `<div class="banner info">${ms('route')}<span>ระยะทางกรอกเอง ${fmt(p.km)} กม.${d.kmReason ? ` · ${esc(d.kmReason)}` : ''}</span></div>`;
   const act = actionsFor(d, lead) + (isCust() && ST.trialMode ? `<div style="border-top:1px dashed var(--line);padding-top:10px"><button class="btn block" style="color:var(--bad);border-color:var(--bad)" data-act="delAsk">${ms('delete_forever')}ลบใบนี้ (โหมดทดลอง)</button><div id="delBox"></div></div>` : '');
   const mapBtn = d.routePts ? `<a class="btn sm" href="${gmLink(d.routePts)}" target="_blank" rel="noopener">${ms('map')}เปิดเส้นทางใน Google Maps</a>` : '';
-  const actual = d.actual ? `<div class="card"><h3>${ms('fact_check')}ผลเคลียร์</h3><div class="lines"><div><span>${p.car === 'ev' ? 'ค่าชาร์จจริง' : p.car === 'none' ? 'น้ำมัน/ชาร์จจริง' : 'น้ำมันจริง'}</span><b>${fmt(d.actual.fuel)}</b></div><div><span>เบี้ยเลี้ยง ${d.actual.people} คน × ${d.actual.days} วัน</span><b>${fmt(d.actual.allowance)}</b></div><div><span>ที่พัก ${d.actual.nights} คืน${d.actual.hotelExcess > 0 ? `<br><span class="f">เกินที่อนุมัติ ${fmt(d.actual.hotelExcess)} · ${d.actual.hotelExApproved ? 'อนุมัติแล้ว' : 'ไม่คืนส่วนนี้'}</span>` : ''}</span><b>${fmt(d.actual.hotel)}</b></div>${(d.actual.extras || []).map((e) => `<div><span>${esc(e.desc)}${e.why ? `<br><span class="f">ไม่มีใบเสร็จ: ${esc(e.why)}</span>` : ''}</span><b>${fmt(e.counted)}</b></div>`).join('')}<div class="tot"><span>ใช้จริง</span><b>${fmt(d.actual.total)}</b></div></div>
+  const actual = d.actual && !d.tripCancelled ? `<div class="card"><h3>${ms('fact_check')}ผลเคลียร์</h3><div class="lines"><div><span>${p.car === 'ev' ? 'ค่าชาร์จจริง' : p.car === 'none' ? 'น้ำมัน/ชาร์จจริง' : 'น้ำมันจริง'}</span><b>${fmt(d.actual.fuel)}</b></div><div><span>เบี้ยเลี้ยง ${d.actual.people} คน × ${d.actual.days} วัน</span><b>${fmt(d.actual.allowance)}</b></div><div><span>ที่พัก ${d.actual.nights} คืน${d.actual.hotelExcess > 0 ? `<br><span class="f">เกินที่อนุมัติ ${fmt(d.actual.hotelExcess)} · ${d.actual.hotelExApproved ? 'อนุมัติแล้ว' : 'ไม่คืนส่วนนี้'}</span>` : ''}</span><b>${fmt(d.actual.hotel)}</b></div>${(d.actual.extras || []).map((e) => `<div><span>${esc(e.desc)}${e.why ? `<br><span class="f">ไม่มีใบเสร็จ: ${esc(e.why)}</span>` : ''}</span><b>${fmt(e.counted)}</b></div>`).join('')}<div class="tot"><span>ใช้จริง</span><b>${fmt(d.actual.total)}</b></div></div>
       <div class="diffbox ${d.diff < 0 ? 'refund' : d.diff > 0 ? 'topup' : 'even'}" style="margin-top:10px"><span>${d.diff < 0 ? 'ทีมงานคืนเงิน' : d.diff > 0 ? 'บริษัทจ่ายเพิ่ม' : 'พอดี'}</span><b>${fmt(Math.abs(d.diff))} บาท</b></div>
       ${(d.actual.files || []).length ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">${d.actual.files.map((f, i) => fileBtn(f, `ใบเสร็จ ${i + 1}`)).join('')}</div>` : ''}</div>` : '';
   const pay = d.payment ? `<div class="lines" style="margin-top:6px"><div><span>โอนเมื่อ ${dt(d.payment.date)} · ${esc(d.payment.bank)}${d.payment.batch ? ` · ${esc(d.payment.batch)}` : ''}${d.payment.bankChanged ? ' <span class="pill p-pending">บัญชีเพิ่งเปลี่ยน · ยืนยันแล้ว</span>' : ''}</span>${fileBtn(d.payment.slip, 'สลิป')}</div></div>` : '';
   openDrawer(`<div class="dh"><div><div style="display:flex;gap:8px;align-items:center"><span class="tpill t-TRV">TRV</span>${statusPill(d)}</div><h2 class="num">${d.no}</h2></div><button class="btn sm ghost x" data-act="closeDrawer" aria-label="ปิด">${ms('close')}</button></div>
-    <div class="db">${d.batch ? `<div class="banner info">${ms('approval')}<span>อยู่ในใบเสนอ CEO <b class="num">${esc(d.batch)}</b> · รอขั้นตอนโอน</span></div>` : ''}${d.ceoNote && !d.batch && ['approve', 'topup'].includes(d.status) ? `<div class="banner warn">${ms('edit_note')}<span>CEO: <b>${esc(d.ceoNote)}</b> · กลับมารอเข้าใบเสนอใหม่</span></div>` : ''}
+    <div class="db">${d.batch ? `<div class="banner info">${ms('approval')}<span>อยู่ในใบเสนอ CEO <b class="num">${esc(d.batch)}</b> · ${BSTAGE_PILL[d.batchStage] || 'รอขั้นตอนโอน'}</span></div>` : ''}${preClearCard(d)}${tripBanners(d)}${d.ceoNote && !d.batch && ['approve', 'topup'].includes(d.status) ? `<div class="banner warn">${ms('edit_note')}<span>CEO: <b>${esc(d.ceoNote)}</b> · กลับมารอเข้าใบเสนอใหม่</span></div>` : ''}
       ${d.returnNote && d.status === 'returned' ? `<div class="banner warn">${ms('edit_note')}<span>ส่งกลับให้แก้: <b>${esc(d.returnNote)}</b></span></div>` : ''}
       ${d.rejectNote && d.status === 'rejected' ? `<div class="banner bad">${ms('block')}<span>${d.cancelled ? 'ยกเลิก' : 'ไม่อนุมัติ'}: <b>${esc(d.rejectNote)}</b></span></div>` : ''}
       ${d.clearReturn && d.status === 'open' ? `<div class="banner warn">${ms('edit_note')}<span>ส่งเคลียร์กลับให้แก้: <b>${esc(d.clearReturn)}</b></span></div>` : ''}
@@ -829,6 +839,70 @@ function drawDoc(no) {
       <div class="card"><h3>${ms('history')}ความเคลื่อนไหว</h3><ul class="tl">${d.timeline.map((t) => `<li>${esc(t.text)}${t.amt != null ? ` · <b class="num">${fmt(t.amt)}</b>` : ''}<small>${dtTime(t.at)} · ${esc(t.byName)}</small></li>`).join('')}</ul></div>
     </div>${act ? `<div class="df">${act}</div>` : ''}`);
 }
+function expFilesCard(d) {
+  const L = docFiles(d);
+  return `<div class="card"><h3>${ms('receipt_long')}บิล / ใบแจ้งหนี้${L.length ? ` <span class="cnt">${L.length}</span>` : ''}</h3>
+    ${L.length ? `<div style="display:flex;gap:6px;flex-wrap:wrap">${L.map((f, i) => fileBtn(f, `บิล ${i + 1}`)).join('')}</div>` : `<div class="banner warn" style="margin:0">${ms('receipt')}<span>ยังไม่มีบิล · แนบภายหลังได้</span></div>`}
+    ${isAdmin() ? `<div class="field" style="margin-top:10px"><label for="x-files">แนบบิลเพิ่ม (เลือกได้หลายไฟล์ · รูปหรือ PDF)</label><input class="inp" type="file" id="x-files" multiple accept="image/*,application/pdf" style="padding-top:6px"></div><button class="btn block" data-act="expAttach">${ms('attach_file')}แนบบิลเพิ่ม</button>` : ''}</div>`;
+}
+function tripBanners(d) {
+  let h = '';
+  if (d.tripCancelled) h += `<div class="banner bad">${ms('event_busy')}<span><b>ยกเลิกทริป</b> · ${esc(d.tripCancelled.note)} · ${esc(d.tripCancelled.byName)} ${dtTime(d.tripCancelled.at)}${d.tripCancelled.paid ? `<br>${d.status === 'refund' ? `<b>${esc(d.staffName)} ต้องคืนเงิน ${fmt(d.tripCancelled.paid)} บาท</b>` : `คืนเงิน ${fmt(d.tripCancelled.paid)} บาทแล้ว`}` : ''}</span></div>`;
+  const pp = d.postponed || [];
+  if (pp.length && !d.tripCancelled) { const l = pp[pp.length - 1]; h += `<div class="banner info">${ms('event_repeat')}<span>เลื่อนทริป${pp.length > 1 ? ` ${pp.length} ครั้ง · ล่าสุด` : ''} จาก ${dRange(l.fromGo, l.fromBack)} → <b>${dRange(l.go, l.back)}</b> · ${esc(l.note)}</span></div>`; }
+  return h;
+}
+/** ผลเคลียร์ก่อนโอน (ยังไม่ได้โอน) */
+function preClearCard(d) {
+  const c = d.preClear; if (!c || d.status !== 'approve') return '';
+  const a = c.actual || {}, p = d.plan || {};
+  return `<div class="card"><h3>${ms('fact_check')}เคลียร์ก่อนโอนแล้ว</h3><div class="lines">
+    <div><span>${p.car === 'ev' ? 'ค่าชาร์จจริง' : 'น้ำมันจริง'}</span><b>${fmt(a.fuel)}</b></div><div><span>เบี้ยเลี้ยง ${a.people} คน × ${a.days} วัน</span><b>${fmt(a.allowance)}</b></div>
+    ${a.nights ? `<div><span>ที่พัก ${a.nights} คืน</span><b>${fmt(a.hotel)}</b></div>` : ''}${(a.extras || []).map((e) => `<div><span>${esc(e.desc)}</span><b>${fmt(e.counted)}</b></div>`).join('')}
+    <div class="tot"><span>ใช้จริง</span><b>${fmt(a.total)}</b></div></div>
+    <div class="diffbox even" style="margin-top:10px"><span>จะโอนตามยอดจริง (ขอไว้ ${fmt(c.requestedOrig)})</span><b>${fmt(d.requested)} บาท</b></div>
+    <p class="formula" style="margin:8px 0 0">โอนเสร็จแล้วปิดใบอัตโนมัติ ไม่ต้องเคลียร์อีก · เคลียร์โดย ${esc(c.byName)} ${dtTime(c.at)}</p>
+    ${(a.files || []).length ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${a.files.map((f, i) => fileBtn(f, `ใบเสร็จ ${i + 1}`)).join('')}</div>` : ''}</div>`;
+}
+/** admin: เลื่อนทริป / ยกเลิกทริป / จ่ายเงินสดย่อยแทนการโอน (ฟอร์มเปิดใน #tripBox) */
+function payPcInfo(d) {
+  if (d.status === 'open' && d.extPay) return { id: d.no + ':EXT', amount: d.extPay.amount, batch: d.extPay.batch, label: 'จ่ายเงินต่อทริปจากเงินสดย่อย' };
+  if (!d.cancelled && (d.status === 'approve' || (d.status === 'topup' && d.settleSrc === 'BANK'))) return { id: d.no, amount: d.status === 'topup' ? d.diff : d.requested, batch: d.batch, label: 'จ่ายเงินสดย่อยแทนการโอน' };
+  return null;
+}
+function tripTools(d) {
+  const trv = (d.type || 'TRV') === 'TRV', canTrip = trv && !d.cancelled && ['approve', 'open'].includes(d.status) && !d.extReq;
+  const pc = payPcInfo(d);
+  if (!canTrip && !pc) return '';
+  return `<div class="triptools">${canTrip && !d.preClear && !d.extPay ? `<button class="btn" data-act="tripAsk" data-v="post">${ms('event_repeat')}เลื่อนทริป</button>` : ''}${canTrip ? `<button class="btn tcancel" data-act="tripAsk" data-v="cancel">${ms('event_busy')}ยกเลิกทริป</button>` : ''}${pc ? `<button class="btn" data-act="tripAsk" data-v="pc">${ms('savings')}${pc.label}</button>` : ''}</div><div id="tripBox"></div>`;
+}
+function tripForm(d, kind) {
+  if (kind === 'post') return `<div class="tform"><b>เลื่อนทริป</b><small>เดิม ${dRange(d.go, d.back)} (${d.plan.days} วัน) · จำนวนวันเท่าเดิม ยอดเท่าเดิม ไม่ต้องเสนอ CEO ใหม่</small>
+    <div class="fgrid"><div class="field"><label for="tp-go">ไปวันที่ใหม่</label><input class="inp" type="date" id="tp-go" min="${todayTH()}" value="${d.go >= todayTH() ? d.go : todayTH()}" data-back-of="${d.go}|${d.back}"></div><div class="field"><label>กลับ (คำนวณให้)</label><div class="inp ro" id="tp-back">${dt(d.back)}</div></div></div>
+    <div class="field"><label for="tp-note">เหตุผล</label><input class="inp" id="tp-note" placeholder="เช่น ลูกค้าขอเลื่อนติดตั้ง"></div>
+    <p class="formula" style="margin:0">หลังเลื่อน: ที่พักและกำหนดเคลียร์นับตามวันใหม่ · แจ้งเตือนผู้เดินทาง · บันทึกในประวัติให้ CEO เห็น</p>
+    <button class="btn pri block" data-act="tripGo" data-v="post">${ms('event_repeat')}ยืนยันเลื่อนทริป</button></div>`;
+  if (kind === 'cancel') {
+    const paid = d.status === 'open', refund = paid ? d.requested - (d.extPay ? d.extPay.amount : 0) : 0;
+    const where = paid ? `<div class="banner warn">${ms('undo')}<span>โอนเงินไปแล้ว · ใบจะเป็น <b>"ยกเลิกทริป · รอคืนเงิน"</b> ${esc(d.staffName)} ต้องคืน <b class="num">${fmt(refund)}</b> บาท${d.extPay && d.extPay.batch ? ` · เงินต่อทริปที่ยังไม่โอนถูกถอดจาก ${esc(d.extPay.batch)}` : ''}</span></div>`
+      : d.batch ? `<div class="banner warn">${ms('info')}<span>อยู่ในใบเสนอ <b class="num">${esc(d.batch)}</b>${d.batchStage && d.batchStage !== 'ceo' ? ' (CEO อนุมัติแล้ว)' : ''} · ระบบจะ<b>ถอดเฉพาะใบนี้</b>ออก รายการอื่นเดินต่อตามปกติ</span></div>`
+      : `<p class="formula" style="margin:0">ยังไม่ได้โอนเงิน · ใบจะปิดเป็น "ยกเลิก"</p>`;
+    return `<div class="tform"><b class="tbad">ยกเลิกทริป</b>${where}<div class="field"><label for="tp-note">เหตุผล (บังคับ)</label><input class="inp" id="tp-note" placeholder="เช่น ลูกค้ายกเลิกงาน"></div>
+      <button class="btn danger block" data-act="tripGo" data-v="cancel">${ms('event_busy')}ยืนยันยกเลิกทริป</button></div>`;
+  }
+  const pc = payPcInfo(d), bal = ST.trv.pcBalance, short = pc.amount - bal;
+  return `<div class="tform"><b>${pc.label}</b><dl class="kv"><dt>จ่ายให้</dt><dd>${esc(d.type === 'EXP' ? (d.payee || '—') : d.staffName)}</dd><dt>ยอด</dt><dd class="num"><b>${fmt(pc.amount)}</b></dd><dt>เงินสดย่อย</dt><dd class="num">${fmt(bal)}${short > 0 ? '' : ` → <b>${fmt(bal - pc.amount)}</b>`}</dd></dl>
+    ${short > 0 ? `<div class="banner bad">${ms('error')}<span>เงินสดย่อยไม่พอ ขาด <b class="num">${fmt(short)}</b> บาท · เติมเงินสดย่อยก่อน</span></div>` : `<div class="banner info">${ms('info')}<span>${pc.batch ? `ถอดออกจากใบเสนอ <b class="num">${esc(pc.batch)}</b> (COO ไม่ต้องโอน) · ` : ''}ข้ามขั้นรอโอน จ่ายทันที</span></div>`}
+    <div class="field"><label for="tp-note">หมายเหตุ (ถ้ามี)</label><input class="inp" id="tp-note" placeholder="เช่น ต้องออกเดินทางพรุ่งนี้เช้า"></div>
+    <button class="btn pri block" data-act="tripGo" data-v="pc" ${short > 0 ? 'disabled' : ''}>${ms('savings')}จ่ายเงินสดย่อย ${fmt(pc.amount)}</button></div>`;
+}
+document.addEventListener('input', (e) => { if (e.target.id !== 'tp-go') return; const [g, bk] = (e.target.dataset.backOf || '').split('|'); const v = e.target.value; if (!v || !g) return; $('#tp-back').textContent = dt(addDays(bk, Math.round((Date.parse(v) - Date.parse(g)) / 864e5))); });
+/** ปุ่มเคลียร์ก่อนโอน (admin): ใบเดินทางอนุมัติแล้ว ยังไม่โอน ทริปจบแล้ว และใบเสนอยังไม่ผ่าน CEO */
+function preClearBtn(d) {
+  if ((d.type || 'TRV') !== 'TRV' || d.status !== 'approve' || d.cancelled || String(d.back) > todayTH()) return '';
+  if (d.batch && d.batchStage && d.batchStage !== 'ceo') return d.preClear ? '' : `<p class="formula" style="margin:0">${ms('lock', 'style="font-size:15px;vertical-align:-3px"')} ใบเสนอ ${esc(d.batch)} ผ่าน CEO แล้ว แก้ยอดไม่ได้ · ถ้าใช้จริงไม่ตรง ให้เคลียร์หลังโอนแบบเดิม</p>`;
+  return `<button class="btn pri block" data-act="openPreClr" data-v="${d.no}">${ms('receipt_long')}${d.preClear ? 'แก้ผลเคลียร์ก่อนโอน' : 'เคลียร์ก่อนโอน'}</button>`;
+}
 function actionsFor(d, lead) {
   const pc = ST.trv.pcBalance, pp = (ST.trv.people || []).find((x) => x.id === d.staffId) || {};
   if (isAdmin()) {
@@ -836,15 +910,16 @@ function actionsFor(d, lead) {
       <button class="btn pri block" data-act="decide" data-v="approve">${ms('check')}อนุมัติ</button>
       <div style="display:flex;gap:8px"><button class="btn" style="flex:1" data-act="editReq">${ms('edit')}แก้ไข</button><button class="btn" style="flex:1" data-act="decideAsk" data-v="return">${ms('undo')}ส่งกลับแก้</button><button class="btn" style="flex:1" data-act="decideAsk" data-v="reject">${ms('block')}ไม่อนุมัติ</button></div>
       <div id="noteBox"></div>`;
-    if (d.status === 'approve') return `<button class="btn pri block" data-act="go" data-v="payq">${ms('approval')}ไปที่ขออนุมัติโอน</button><button class="btn block" data-act="decideAsk" data-v="cancel">${ms('block')}ยกเลิกใบนี้</button><div id="noteBox"></div>`;
+    if (d.status === 'approve' && (d.type || 'TRV') === 'TRV') return `${preClearBtn(d)}<button class="btn ${preClearBtn(d).includes('openPreClr') ? '' : 'pri'} block" data-act="go" data-v="payq">${ms('approval')}ไปที่ขออนุมัติโอน</button>${tripTools(d)}`;
+    if (d.status === 'approve') return `${preClearBtn(d)}<button class="btn ${preClearBtn(d).includes('openPreClr') ? '' : 'pri'} block" data-act="go" data-v="payq">${ms('approval')}ไปที่ขออนุมัติโอน</button>${tripTools(d)}${d.batch ? '' : `<button class="btn block" data-act="decideAsk" data-v="cancel">${ms('block')}ยกเลิกใบนี้</button><div id="noteBox"></div>`}`;
     if (d.status === 'open' && d.extReq) return `<div class="srcpick"><label><input type="radio" name="xsrc" value="PC" ${pc >= d.extReq.amount ? 'checked' : 'disabled'}> จ่ายเงินสดย่อย<br><small style="color:var(--sub)">เหลือ ${fmt(pc)}</small></label><label><input type="radio" name="xsrc" value="BANK" ${pc >= d.extReq.amount ? '' : 'checked'} ${pp.hasBank ? '' : 'disabled'}> โอนผ่านใบเสนอ CEO<br><small style="color:var(--sub)">${pp.hasBank ? 'เข้ารายการขออนุมัติโอน' : 'ยังไม่มีบัญชี'}</small></label></div>
       <button class="btn pri block" data-act="extOk">${ms('check')}อนุมัติต่อทริป (+${fmt(d.extReq.amount)})</button><button class="btn block" data-act="extNoAsk">${ms('block')}ไม่อนุมัติ</button><div id="noteBox"></div>`;
-    if (d.status === 'open' && d.extPay) return d.extPay.batch ? `<button class="btn block" data-act="go" data-v="payq">${ms('approval')}เงินต่อทริปอยู่ในใบเสนอ ${esc(d.extPay.batch)}</button>` : `<button class="btn pri block" data-act="go" data-v="payq">${ms('approval')}ไปที่ขออนุมัติโอน (ต่อทริป ${fmt(d.extPay.amount)})</button><button class="btn block" data-act="extCancel">${ms('undo')}ยกเลิกการต่อทริป (กลับเป็นแผนเดิม)</button>`;
-    if (d.status === 'open') return `<button class="btn block" data-act="openExt" data-v="${d.no}">${ms('add_location_alt')}ต่อทริป / เพิ่มสถานที่</button><button class="btn block" data-act="openClr" data-v="${d.no}">${ms('fact_check')}เคลียร์แทนทีมงาน</button>`;
+    if (d.status === 'open' && d.extPay) return (d.extPay.batch ? `<button class="btn block" data-act="go" data-v="payq">${ms('approval')}เงินต่อทริปอยู่ในใบเสนอ ${esc(d.extPay.batch)}</button>` : `<button class="btn pri block" data-act="go" data-v="payq">${ms('approval')}ไปที่ขออนุมัติโอน (ต่อทริป ${fmt(d.extPay.amount)})</button><button class="btn block" data-act="extCancel">${ms('undo')}ยกเลิกการต่อทริป (กลับเป็นแผนเดิม)</button>`) + tripTools(d);
+    if (d.status === 'open') return `<button class="btn block" data-act="openExt" data-v="${d.no}">${ms('add_location_alt')}ต่อทริป / เพิ่มสถานที่</button><button class="btn block" data-act="openClr" data-v="${d.no}">${ms('fact_check')}เคลียร์แทนทีมงาน</button>${tripTools(d)}`;
     if (d.status === 'clearSub') return `<button class="btn pri block" data-act="openClr" data-v="${d.no}">${ms('fact_check')}ตรวจผลเคลียร์</button>`;
     if (d.status === 'refund') return `<p class="formula" style="margin:0">รอ ${esc(d.staffName)} คืนเงิน <b>${fmt(-d.diff)}</b> บาท</p><div class="srcpick"><label><input type="radio" name="rhow" value="PC" checked> รับเงินสด (เข้าเงินสดย่อย)</label><label><input type="radio" name="rhow" value="BANK"> โอนคืนเข้าบัญชี</label></div>
       <div class="field" id="rslipBox" hidden><label for="r-slip">สลิปที่ทีมงานโอนคืน</label><input class="inp" type="file" id="r-slip" accept="image/*,application/pdf" style="padding-top:6px"></div><button class="btn pri block" data-act="refundOk">${ms('task_alt')}รับเงินคืนแล้ว · ปิดใบ</button>`;
-    if (d.status === 'topup' && d.settleSrc === 'BANK') return `<button class="btn pri block" data-act="go" data-v="payq">${ms('approval')}ไปที่ขออนุมัติโอน (ส่วนต่าง ${fmt(d.diff)})</button>`;
+    if (d.status === 'topup' && d.settleSrc === 'BANK') return `<button class="btn pri block" data-act="go" data-v="payq">${ms('approval')}ไปที่ขออนุมัติโอน (ส่วนต่าง ${fmt(d.diff)})</button>${tripTools(d)}`;
     return '';
   }
   if (!lead) return isCeo() ? '' : `<p class="formula" style="margin:0">${ms('visibility', 'style="font-size:16px;vertical-align:-3px"')} คุณร่วมเดินทางในทริปนี้ · ผู้รับเงินคือ ${esc(d.staffName)}</p>`;
@@ -852,7 +927,7 @@ function actionsFor(d, lead) {
   if (d.status === 'open' && d.extReq) return `<p class="formula" style="margin:0">ส่งคำขอต่อทริปแล้ว (+${fmt(d.extReq.amount)} บาท) · รอ admin อนุมัติ</p>`;
   if (d.status === 'open' && d.extPay) return `<p class="formula" style="margin:0">อนุมัติต่อทริปแล้ว · รอโอนเงินเพิ่ม ${fmt(d.extPay.amount)} บาท · หลังได้รับเงินจึงส่งเคลียร์ได้</p>`;
   if (d.status === 'open') return `<button class="btn pri block" data-act="openClr" data-v="${d.no}">${ms('fact_check')}ส่งเคลียร์ (หลังจบทริป)</button><button class="btn block" data-act="openExt" data-v="${d.no}">${ms('add_location_alt')}ต่อทริป / เพิ่มสถานที่</button>`;
-  const t = { approve: 'อนุมัติแล้ว รอโอนเงินเข้าบัญชี', clearSub: 'ส่งเคลียร์แล้ว รอ admin ตรวจ', refund: `นำเงินคืน ${fmt(-d.diff)} บาทให้ admin แล้ว admin จะปิดใบให้`, topup: `จะได้รับเงินเพิ่ม ${fmt(d.diff)} บาท`, closed: 'ทริปนี้ปิดแล้ว', rejected: 'คำขอนี้ไม่ได้รับอนุมัติ' }[d.status];
+  const t = { approve: d.preClear ? `admin เคลียร์ยอดใช้จริงให้แล้ว · จะโอน ${fmt(d.requested)} บาท แล้วปิดใบให้อัตโนมัติ` : `อนุมัติแล้ว รอโอนเงินเข้าบัญชี${d.batchStage ? ` · ${BSTAGE_PILL[d.batchStage] || ''}` : ''}`, clearSub: 'ส่งเคลียร์แล้ว รอ admin ตรวจ', refund: `นำเงินคืน ${fmt(-d.diff)} บาทให้ admin แล้ว admin จะปิดใบให้`, topup: `จะได้รับเงินเพิ่ม ${fmt(d.diff)} บาท`, closed: 'ทริปนี้ปิดแล้ว', rejected: 'คำขอนี้ไม่ได้รับอนุมัติ' }[d.status];
   return t ? `<p class="formula" style="margin:0">${t}</p>` : '';
 }
 
@@ -860,6 +935,17 @@ function actionsFor(d, lead) {
 function newClr(d) {
   if (d.clearSub) return JSON.parse(JSON.stringify({ fuel: d.clearSub.fuel, people: d.clearSub.people, days: d.clearSub.days, stays: d.clearSub.stays || [], ex: d.clearSub.ex || [], files: d.clearSub.files || [], note: d.clearSub.note || '', hotelEx: false, exOver: false, src: 'PC' }));
   return { fuel: d.plan.car === 'none' ? 0 : '', people: d.plan.people, days: d.plan.days, stays: d.plan.nights ? [{ from: d.go, to: addDays(d.back, -1), rate: '' }] : [], ex: (d.plan.extras || []).map(() => ({ amount: '', file: null, noRcpt: false, why: '' })), files: [], note: '', hotelEx: false, exOver: false, src: 'PC' };
+}
+function preClrBox(d, r) {
+  const orig = d.preClear ? d.preClear.requestedOrig : d.requested;
+  return `<div class="diffbox even" style="margin:12px 0;display:block"><small style="display:block;color:var(--sub)">ยอดที่จะโอนให้ ${esc(d.staffName)}</small><b style="font-size:22px">${r.total !== orig ? `<s style="font-size:14px;color:var(--sub);font-weight:500">${fmt(orig)}</s> → ` : ''}${fmt(r.total)} บาท</b></div>
+    ${d.batch ? `<div class="banner warn" style="margin-bottom:10px">${ms('print')}<span>อยู่ในใบเสนอ <b class="num">${esc(d.batch)}</b> ที่ยังรอ CEO เซ็น · ระบบแก้ยอดในใบเดิมให้ <b>ต้องพิมพ์ใบเสนอใหม่</b> ก่อนให้ CEO เซ็น</span></div>` : ''}`;
+}
+/** โหลดผลเคลียร์ก่อนโอนเดิมกลับเข้าฟอร์ม (กดแก้ผลเคลียร์ก่อนโอน) */
+function clrFromPre(d) {
+  const a = d.preClear.actual || {}, k = newClr(d);
+  return { ...k, fuel: a.fuel, people: a.people, days: a.days, stays: (a.stays || []).map((x) => ({ ...x })), files: [...(a.files || [])], note: d.preClear.note || '',
+    ex: (a.extras || []).map((e) => ({ amount: e.actual, file: e.file || null, noRcpt: !e.file, why: e.why || '' })), hotelEx: !!a.hotelExApproved, exOver: !!a.exOverApproved };
 }
 function clrCalc(d, k) {
   const s = set(), p = d.plan, allowance = (Number(k.people) || 0) * (Number(k.days) || 0) * s.allowance, cap = (p.rooms || 1) * (p.rate || s.hotel);
@@ -876,7 +962,7 @@ function clrCalc(d, k) {
   return { allowance, nights: nights.length, hotelClaim, hotelExcess, hotel, cap, ex, extras, exOver, total, err };
 }
 function vClr() {
-  const d = doc(ST.clrNo); if (!d || !(d.status === 'open' || (isAdmin() && d.status === 'clearSub')) || (!isAdmin() && d.staffId !== ST.me.id)) { ST.view = isAdmin() ? 'clear' : 'home'; return isAdmin() ? vClearList() : vMyTrips(); }
+  const pre = !!ST.clrPre && isAdmin(); const d = doc(ST.clrNo); if (!d || !(d.status === 'open' || (isAdmin() && d.status === 'clearSub') || (pre && d.status === 'approve')) || (!isAdmin() && d.staffId !== ST.me.id)) { ST.view = isAdmin() ? 'clear' : 'home'; return isAdmin() ? vClearList() : vMyTrips(); }
   const k = ST.clr || (ST.clr = newClr(d)); const r = clrCalc(d, k), diff = r.total - d.requested, s = set();
   const adminRev = isAdmin();
   const stays = `<div class="field full"><label>ที่พัก (ตามจริง · กรอกเป็นช่วงวันที่) · อนุมัติไว้ ${fmt(d.plan.rate)} × ${d.plan.rooms} ห้อง/คืน</label><div class="items">${k.stays.map((st, i) => `<div class="stay"><div class="sd"><input class="inp" type="date" id="st-f-${i}" data-st="${i}:from" value="${st.from}" min="${d.go}" max="${d.back}" aria-label="ตั้งแต่"><span>ถึง</span><input class="inp" type="date" id="st-t-${i}" data-st="${i}:to" value="${st.to}" min="${d.go}" max="${d.back}" aria-label="ถึง"></div><div class="sr"><input class="inp num" type="number" id="st-r-${i}" data-st="${i}:rate" value="${esc(st.rate)}" placeholder="บาท/คืน" aria-label="ราคาต่อคืน"><button class="xbtn" data-act="stayDel" data-v="${i}" aria-label="ลบช่วง">${ms('close', 'style="font-size:18px"')}</button></div></div>`).join('')}
@@ -888,8 +974,9 @@ function vClr() {
         ${e.actual > e.amount ? `<span class="overtag bad">ใช้เกินที่ขอ ${fmt(e.actual - e.amount)} บาท</span>` : ''}</div>`; }).join('')}</div>
       ${r.exOver > 0 && adminRev ? `<label class="ckl excheck"><input type="checkbox" id="c-exo" data-cchk="exOver" ${k.exOver ? 'checked' : ''}> อนุมัติค่าใช้จ่ายอื่นที่เกินที่ขอ <b>${fmt(r.exOver)}</b> บาท</label>` : ''}</div>` : '';
   const files = `<div class="field full"><label for="c-files">รูปใบเสร็จ (น้ำมัน ที่พัก ฯลฯ)</label><input class="inp" type="file" id="c-files" accept="image/*,application/pdf" multiple style="padding-top:6px"><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${k.files.map((f, i) => `<span class="chip">${fileBtn(f, `ใบเสร็จ ${i + 1}`)}<button class="btn sm ghost" style="height:20px;padding:0 2px" data-act="fileDel" data-v="${i}" aria-label="เอาไฟล์ออก">${ms('close', 'style="font-size:16px"')}</button></span>`).join('') || '<span class="hint">ยังไม่แนบ</span>'}</div></div>`;
-  const topSrc = adminRev && diff > 0 && !r.err ? `<div class="srcpick" style="margin-bottom:8px"><label><input type="radio" name="tsrc" value="PC" ${k.src === 'PC' ? 'checked' : ''}> จ่ายส่วนต่างเงินสดย่อย<br><small style="color:var(--sub)">เหลือ ${fmt(ST.trv.pcBalance)}</small></label><label><input type="radio" name="tsrc" value="BANK" ${k.src === 'BANK' ? 'checked' : ''}> โอนส่วนต่าง</label></div>` : '';
+  const topSrc = adminRev && !pre && diff > 0 && !r.err ? `<div class="srcpick" style="margin-bottom:8px"><label><input type="radio" name="tsrc" value="PC" ${k.src === 'PC' ? 'checked' : ''}> จ่ายส่วนต่างเงินสดย่อย<br><small style="color:var(--sub)">เหลือ ${fmt(ST.trv.pcBalance)}</small></label><label><input type="radio" name="tsrc" value="BANK" ${k.src === 'BANK' ? 'checked' : ''}> โอนส่วนต่าง</label></div>` : '';
   return `<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap"><button class="btn sm ghost" data-act="go" data-v="${isAdmin() ? 'clear' : 'home'}">${ms('arrow_back')}${isAdmin() ? 'เคลียร์เงิน' : 'ทริปของฉัน'}</button><span class="tpill t-TRV">TRV</span><b class="num">${d.no}</b><span style="color:var(--sub)">${esc(d.staffName)} · ${esc(d.title)} · ${dRange(d.go, d.back)}</span></div>
+    ${pre ? `<div class="banner info" style="margin-bottom:12px">${ms('receipt_long')}<span><b>เคลียร์ก่อนโอน</b> · ทริปจบแล้วแต่ยังไม่ได้โอน ใส่ยอดที่ ${esc(d.staffName)} สำรองจ่ายจริง · ระบบจะโอนตามยอดจริงและปิดใบทันทีเมื่อโอนเสร็จ</span></div>` : ''}
     ${adminRev && d.status === 'clearSub' ? `<div class="banner info" style="margin-bottom:12px">${ms('inbox')}<span><b>${esc(d.clearSub.byName)}</b> ส่งเคลียร์เมื่อ ${dtTime(d.clearSub.at)} · ตรวจตัวเลขกับใบเสร็จ แก้ได้ แล้วกดยืนยัน${d.clearSub.note ? `<br>หมายเหตุ: ${esc(d.clearSub.note)}` : ''}</span></div>` : ''}
     ${!adminRev && d.clearReturn ? `<div class="banner warn" style="margin-bottom:12px">${ms('edit_note')}<span>admin ส่งกลับให้แก้: <b>${esc(d.clearReturn)}</b></span></div>` : ''}
     <div class="grid g2"><div class="card"><div class="fgrid">
@@ -904,19 +991,25 @@ function vClr() {
       <div><span>ที่พัก ${r.nights} คืน${r.hotelExcess > 0 && !k.hotelEx ? `<br><span class="f">คืนไม่เกิน ${fmt(r.cap)}/คืน</span>` : ''}</span><b>${fmt(r.hotel)}</b></div>
       ${r.ex.length ? `<div><span>ค่าใช้จ่ายอื่น</span><b>${fmt(r.extras)}</b></div>` : ''}
       <div class="tot"><span>ใช้จริง</span><b>${r.err ? '—' : fmt(r.total)}</b></div></div>
-      ${r.err ? `<p class="formula" style="margin:12px 0;color:var(--warn)">${esc(r.err)}</p>` : `<div class="diffbox ${diff < 0 ? 'refund' : diff > 0 ? 'topup' : 'even'}" style="margin:12px 0"><span>${diff < 0 ? 'ทีมงานต้องคืนเงิน' : diff > 0 ? 'บริษัทต้องจ่ายเพิ่ม' : 'พอดี ปิดใบได้ทันที'}</span><b>${fmt(Math.abs(diff))} บาท</b></div>`}
+      ${r.err ? `<p class="formula" style="margin:12px 0;color:var(--warn)">${esc(r.err)}</p>` : pre ? preClrBox(d, r) : `<div class="diffbox ${diff < 0 ? 'refund' : diff > 0 ? 'topup' : 'even'}" style="margin:12px 0"><span>${diff < 0 ? 'ทีมงานต้องคืนเงิน' : diff > 0 ? 'บริษัทต้องจ่ายเพิ่ม' : 'พอดี ปิดใบได้ทันที'}</span><b>${fmt(Math.abs(diff))} บาท</b></div>`}
       ${topSrc}</div>
-      ${adminRev ? `<button class="btn pri block" data-act="clrConfirm">${ms('task_alt')}ยืนยันผลเคลียร์</button>${d.status === 'clearSub' ? `<div class="field" style="margin-top:10px"><label for="c-ret">เหตุผล (ถ้าส่งกลับให้แก้)</label><input class="inp" id="c-ret" placeholder="เช่น ใบเสร็จน้ำมันไม่ชัด"></div><button class="btn block" style="margin-top:6px" data-act="clrReturn">${ms('undo')}ส่งกลับให้แก้</button>` : ''}`
+      ${pre ? `<button class="btn pri block" data-act="clrPre">${ms('task_alt')}ยืนยันผลเคลียร์${r.err ? '' : ` · โอน ${fmt(r.total)}`}</button>` : adminRev ? `<button class="btn pri block" data-act="clrConfirm">${ms('task_alt')}ยืนยันผลเคลียร์</button>${d.status === 'clearSub' ? `<div class="field" style="margin-top:10px"><label for="c-ret">เหตุผล (ถ้าส่งกลับให้แก้)</label><input class="inp" id="c-ret" placeholder="เช่น ใบเสร็จน้ำมันไม่ชัด"></div><button class="btn block" style="margin-top:6px" data-act="clrReturn">${ms('undo')}ส่งกลับให้แก้</button>` : ''}`
         : `<button class="btn pri block" data-act="clrSubmit">${ms('send')}ส่งเคลียร์ให้ admin ตรวจ</button>`}
     </div></div>`;
 }
 
 // ---------- ขออนุมัติโอน (ใบเสนอ CEO · APV) ----------
-const STAGE = { ceo: 'รอ CEO เซ็น', ceoOk: 'CEO อนุมัติ · รอส่งเรื่องเข้าระบบ', coo: 'รอ COO อนุมัติ', paid: 'โอนแล้ว', cancelled: 'ยกเลิก' };
+const STAGE = { ceo: 'รอ CEO เซ็น', ceoOk: 'CEO อนุมัติ · รอส่งเรื่องเข้าระบบ', coo: 'รอ COO โอน', paid: 'โอนครบแล้ว', cancelled: 'ยกเลิก' };
+// COO โอนแยกรายคน — กลุ่มผู้รับเงิน (ต้องตรงกับ groupKey ฝั่ง backend)
+const groupKey = (it) => it.kind === 'pcr' ? 'pcr' : it.staffId ? `u:${it.staffId}` : `x:${it.payee || it.id}`;
+function bGroupList(b) { const m = new Map(); (b.items || []).forEach((it) => { const k = groupKey(it); if (!m.has(k)) m.set(k, []); m.get(k).push(it); });
+  return [...m.entries()].map(([key, items]) => ({ key, items, payee: items[0].payee, bank: items[0].bank, external: items[0].external, amount: Math.round(items.reduce((t, i) => t + i.amount, 0) * 100) / 100, paid: (b.paidGroups || {})[key] || null })); }
+const stageText = (b) => { if (b.status !== 'coo') return STAGE[b.status]; const g = bGroupList(b), n = g.filter((x) => x.paid).length; return n ? `รอ COO โอน · ${n}/${g.length} คน` : 'รอ COO โอน'; };
+const preNote = (x) => x.preClear ? ` <span class="pill p-pre">เคลียร์แล้ว · ขอไว้ ${fmt(x.preClear.orig)}</span>` : '';
 const STAGE_I = { ceo: 0, ceoOk: 1, coo: 2, paid: 4 };
 const KIND = { advance: 'เงินเบิก', topup: 'จ่ายส่วนต่างหลังเคลียร์', rmb: 'เบิกคืน', exp: 'ค่าใช้จ่ายบริษัท', pcr: 'เบิกชดเชยเงินสดย่อย', ext: 'เงินต่อทริป' };
 const kindLabel = (x) => x.kind === 'advance' ? (x.type === 'ADV' ? 'เงินทดรอง' : 'เงินเบิกค่าเดินทาง') : KIND[x.kind] || '';
-const stepper = (st) => { const i = STAGE_I[st] ?? 0; return `<div class="steps">${['เสนอ CEO เซ็น', 'ส่งเรื่องเข้าระบบ', 'COO อนุมัติ', 'โอนแล้ว'].map((t, k) => `<div class="step ${k < i ? 'done' : k === i ? 'cur' : ''}"><i>${k < i ? '✓' : k + 1}</i>${t}</div>`).join('')}</div>`; };
+const stepper = (st) => { const i = STAGE_I[st] ?? 0; return `<div class="steps">${['เสนอ CEO เซ็น', 'ส่งเรื่องเข้าระบบ', 'COO โอน', 'โอนครบ'].map((t, k) => `<div class="step ${k < i ? 'done' : k === i ? 'cur' : ''}"><i>${k < i ? '✓' : k + 1}</i>${t}</div>`).join('')}</div>`; };
 const bankLine = (x) => x.external ? 'ตามใบแจ้งหนี้' : x.bank ? `${esc(x.bank.bank)} <span class="num">${esc(x.bank.no)}</span>` : '<span style="color:var(--bad)">ยังไม่มีบัญชี</span>';
 function bahtText(n) {
   const N = ['', 'หนึ่ง', 'สอง', 'สาม', 'สี่', 'ห้า', 'หก', 'เจ็ด', 'แปด', 'เก้า'], P = ['', 'สิบ', 'ร้อย', 'พัน', 'หมื่น', 'แสน'];
@@ -931,7 +1024,7 @@ function vPayq() {
   const W = ST.apv.wait, un = ST.unsel || (ST.unsel = new Set()), bc = ST.bconf || (ST.bconf = new Set());
   const sel = W.filter((x) => !un.has(x.id)), sum = sel.reduce((t, x) => t + x.amount, 0);
   const active = ST.apv.batches.filter((b) => !['paid', 'cancelled'].includes(b.status)), done = ST.apv.batches.filter((b) => b.status === 'paid').slice(0, 12), canc = ST.apv.batches.filter((b) => b.status === 'cancelled').slice(0, 6);
-  const bcard = (b) => `<div class="card bcard" role="button" tabindex="0" data-act="openBatch" data-v="${b.no}"><div class="row"><b class="num">${b.no}</b><span class="pill ${b.status === 'paid' ? 'p-closed' : b.status === 'cancelled' ? 'p-mute' : 'p-pending'}">${STAGE[b.status]}</span><span class="sp num" style="font-weight:700;font-size:16px">${fmt(b.total)}</span></div>${b.status === 'cancelled' ? '' : stepper(b.status)}<small style="color:var(--sub)">${b.items.length} รายการ · สร้าง ${dt(b.date)}${b.paidAt ? ` · โอน ${dt(b.paidAt)}` : ''}</small>${b.status === 'cancelled' ? '' : `<button class="btn sm pbtn" data-act="apvPrint" data-v="${b.no}">${ms('print')}พิมพ์ใบเสนอ CEO (A4)</button>`}</div>`;
+  const bcard = (b) => `<div class="card bcard" role="button" tabindex="0" data-act="openBatch" data-v="${b.no}"><div class="row"><b class="num">${b.no}</b><span class="pill ${b.status === 'paid' ? 'p-closed' : b.status === 'cancelled' ? 'p-mute' : 'p-pending'}">${stageText(b)}</span><span class="sp num" style="font-weight:700;font-size:16px">${fmt(b.total)}</span></div>${b.status === 'cancelled' ? '' : stepper(b.status)}<small style="color:var(--sub)">${b.items.length} รายการ · สร้าง ${dt(b.date)}${b.paidAt ? ` · โอน ${dt(b.paidAt)}` : ''}</small>${b.status === 'cancelled' ? '' : `<button class="btn sm pbtn" data-act="apvPrint" data-v="${b.no}">${ms('print')}พิมพ์ใบเสนอ CEO (A4)</button>`}</div>`;
   const row = (x) => `<tr><td>${isAdmin() ? `<input type="checkbox" class="chk" data-sel="${esc(x.id)}" ${un.has(x.id) ? '' : 'checked'} aria-label="เลือก ${esc(x.title)}">` : ''}</td>
     <td>${x.ceoNote ? `<span class="pill p-refund" style="display:inline-block;margin-bottom:4px">${ms('edit_note', 'style="font-size:15px;vertical-align:-3px"')} ${esc(x.ceoNote)}</span><br>` : ''}${x.type !== 'PC' ? tpill(x.type) : ''}<span class="kind">${kindLabel(x)}</span> ${x.ref ? `<button class="btn sm ghost" style="height:auto;padding:0 4px" data-act="openDoc" data-v="${esc(x.ref)}"><span class="num">${esc(x.ref)}</span></button>` : ''}<span class="sub" style="display:block;color:var(--sub);font-size:12.5px">${esc(x.title)}</span></td>
     <td>${esc(x.payee)}<span style="display:block;color:var(--sub);font-size:12.5px">${bankLine(x)}</span>${x.bankPending ? `<label class="ckl" style="color:var(--bad);font-size:12.5px;margin-top:4px"><input type="checkbox" data-bconf="${esc(x.id)}" ${bc.has(x.id) ? 'checked' : ''}> บัญชีเพิ่งเปลี่ยน · ตรวจกับเจ้าตัวแล้ว</label>` : ''}</td><td class="r num">${fmt(x.amount)}</td></tr>`;
@@ -948,21 +1041,53 @@ function drawBatch(no) {
   const b = ST.apv && ST.apv.batches.find((x) => x.no === no); if (!b) return;
   ST.openBatch = no; const ad = isAdmin();
   if (isCeo() && b.status === 'ceo') { drawCeo(b); return; }
-  const list = b.items.map((x) => `<div style="display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-top:1px solid var(--line)">${b.status === 'ceo' && ad ? `<input type="checkbox" class="chk" data-keep="${esc(x.id)}" checked aria-label="CEO อนุมัติ ${esc(x.title)}">` : ''}<span style="flex:1;min-width:0"><span class="kind">${kindLabel(x)}</span> ${x.ref ? `<span class="num" style="font-size:12.5px">${esc(x.ref)}</span>` : ''}<br>${esc(x.title)}<br><small style="color:var(--sub)">${esc(x.payee)} · ${bankLine(x)}</small>${b.status === 'ceo' && ad ? `<div class="field" data-noteof="${esc(x.id)}" hidden style="margin-top:6px"><input class="inp" id="kn-${esc(x.id)}" placeholder="สิ่งที่ CEO ให้แก้ (ถ้ามี)"></div>` : ''}</span><b class="num">${fmt(x.amount)}</b></div>`).join('');
+  const list = b.items.map((x) => `<div style="display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-top:1px solid var(--line)">${b.status === 'ceo' && ad ? `<input type="checkbox" class="chk" data-keep="${esc(x.id)}" checked aria-label="CEO อนุมัติ ${esc(x.title)}">` : ''}<span style="flex:1;min-width:0"><span class="kind">${kindLabel(x)}</span> ${x.ref ? `<span class="num" style="font-size:12.5px">${esc(x.ref)}</span>` : ''}<br>${esc(x.title)}${preNote(x)}<br><small style="color:var(--sub)">${esc(x.payee)} · ${bankLine(x)}</small>${b.status === 'ceo' && ad ? `<div class="field" data-noteof="${esc(x.id)}" hidden style="margin-top:6px"><input class="inp" id="kn-${esc(x.id)}" placeholder="สิ่งที่ CEO ให้แก้ (ถ้ามี)"></div>` : ''}</span><b class="num">${fmt(x.amount)}</b></div>`).join('');
   const dropped = (b.dropped || []).length ? `<div class="card"><h3>${ms('undo')}CEO ไม่อนุมัติ (กลับไปรอ)</h3>${b.dropped.map((x) => `<div style="padding:6px 0;border-top:1px solid var(--line)"><span class="kind">${kindLabel(x)}</span> ${esc(x.ref || '')} · ${esc(x.title)} · <b class="num">${fmt(x.amount)}</b>${x.ceoNote ? `<br><small style="color:var(--warn)">ให้แก้: ${esc(x.ceoNote)}</small>` : ''}</div>`).join('')}</div>` : '';
   let act = '';
   const cancel = `<button class="btn ghost block" data-act="apvCancelAsk">${ms('block')}ยกเลิกใบเสนอ (รายการกลับไปรอ)</button><div id="noteBox"></div>`;
   if (ad && b.status === 'ceo') act = `<div class="field"><label for="b-scan">แนบรูปหรือสแกนใบที่ CEO เซ็นแล้ว</label><input class="inp" type="file" id="b-scan" accept="image/*,application/pdf" style="padding-top:6px"></div><p class="formula" style="margin:0">ติ๊กออกรายการที่ CEO ไม่อนุมัติ แล้วใส่สิ่งที่ให้แก้ (ถ้ามี) · รายการนั้นจะกลับไปรอเข้าใบเสนอใหม่</p><button class="btn pri block" data-act="apvCeo">${ms('verified')}CEO เซ็นอนุมัติแล้ว</button>${cancel}`;
   if (ad && b.status === 'ceoOk') act = `<div class="field"><label for="b-ref">เลขอ้างอิงในระบบธนาคาร (ถ้ามี)</label><input class="inp" id="b-ref"></div><button class="btn pri block" data-act="apvSent">${ms('send')}ส่งเรื่องเข้าระบบแล้ว · รอ COO</button>${cancel}`;
-  if (ad && b.status === 'coo') act = `<div class="fgrid"><div class="field"><label for="b-date">วันที่โอน</label><input class="inp" type="date" id="b-date" value="${todayTH()}"></div><div class="field"><label for="b-slip">สลิปการโอน</label><input class="inp" type="file" id="b-slip" accept="image/*,application/pdf" style="padding-top:6px"></div></div><button class="btn pri block" data-act="apvPaid">${ms('task_alt')}COO อนุมัติแล้ว · โอนสำเร็จ</button>${cancel}`;
-  openDrawer(`<div class="dh"><div><div style="display:flex;gap:8px;align-items:center"><span class="tpill t-PC">APV</span><span class="pill ${b.status === 'paid' ? 'p-closed' : b.status === 'cancelled' ? 'p-mute' : 'p-pending'}">${STAGE[b.status]}</span></div><h2 class="num">${b.no}</h2></div><button class="btn sm ghost x" data-act="closeDrawer" aria-label="ปิด">${ms('close')}</button></div>
+  if (ad && b.status === 'coo') { const anyPaid = bGroupList(b).some((g) => g.paid);
+    act = `<details class="wslip"><summary>${ms('receipt')}COO โอนรวมก้อนเดียว? แนบสลิปเดียว${anyPaid ? ' (คนที่ยังไม่โอน)' : 'ทั้งใบ'}</summary><div class="fgrid" style="margin-top:8px"><div class="field"><label for="b-date">วันที่โอน</label><input class="inp" type="date" id="b-date" value="${todayTH()}"></div><div class="field"><label for="b-slip">สลิปการโอน</label><input class="inp" type="file" id="b-slip" accept="image/*,application/pdf" style="padding-top:6px"></div></div><button class="btn block" data-act="apvPaid">${ms('task_alt')}บันทึกโอน${anyPaid ? 'ส่วนที่เหลือ' : 'ทั้งใบ'} · สลิปเดียว</button></details>${anyPaid ? '' : cancel}`; }
+  openDrawer(`<div class="dh"><div><div style="display:flex;gap:8px;align-items:center"><span class="tpill t-PC">APV</span><span class="pill ${b.status === 'paid' ? 'p-closed' : b.status === 'cancelled' ? 'p-mute' : 'p-pending'}">${stageText(b)}</span></div><h2 class="num">${b.no}</h2></div><button class="btn sm ghost x" data-act="closeDrawer" aria-label="ปิด">${ms('close')}</button></div>
     <div class="db">${b.status === 'cancelled' ? (b.cancelNote ? `<div class="banner bad">${ms('block')}<span>ยกเลิก: ${esc(b.cancelNote)}</span></div>` : '') : stepper(b.status)}
       <div class="money3" style="grid-template-columns:1fr"><div class="hl"><small>ยอดรวม ${b.items.length} รายการ</small><b>${fmt(b.total)}</b><small>(${bahtText(b.total)})</small></div></div>
       ${b.status === 'cancelled' ? '' : `<button class="btn ${b.status === 'ceo' ? 'pri' : ''} block" data-act="apvPrint" data-v="${b.no}">${ms('print')}พิมพ์ใบเสนอ CEO (A4)</button>`}
-      ${apvWho(b, ad)}<div class="card"><h3>${ms('list_alt')}รายการ</h3>${list}</div>${dropped}
+      ${reprintBanner(b, ad)}${personsHtml(b, ad)}${apvWho(b, ad)}<div class="card"><h3>${ms('list_alt')}รายการ</h3>${list}</div>${dropped}${removedHtml(b)}
       ${b.scan || b.slip ? `<div class="card"><h3>${ms('attach_file')}หลักฐาน</h3><div style="display:flex;gap:6px;flex-wrap:wrap">${fileBtn(b.scan, 'ใบที่ CEO เซ็น')}${fileBtn(b.slip, 'สลิปการโอน')}</div>${b.bankRef ? `<p class="formula" style="margin:8px 0 0">อ้างอิงธนาคาร: ${esc(b.bankRef)}</p>` : ''}</div>` : ''}
       <div class="card"><h3>${ms('history')}ความเคลื่อนไหว</h3><ul class="tl">${b.timeline.map((t) => `<li>${esc(t.text)}${t.amt != null ? ` · <b class="num">${fmt(t.amt)}</b>` : ''}<small>${dtTime(t.at)} · ${esc(t.byName)}</small></li>`).join('')}</ul></div>
     </div>${act ? `<div class="df">${act}</div>` : ''}`);
+}
+/** ใบเสนอที่ยอดเปลี่ยนหลังพิมพ์ (เคลียร์ก่อนโอน) → เตือนพิมพ์ใหม่ก่อนให้ CEO เซ็น */
+function reprintBanner(b, ad) {
+  if (b.status !== 'ceo' || !b.changedAt || (b.printedAt && b.printedAt >= b.changedAt)) return '';
+  const ch = (b.changes || []).filter((c) => !b.printedAt || c.at > b.printedAt);
+  return `<div class="banner warn">${ms('print')}<span><b>ยอดเปลี่ยน${b.printedAt ? 'หลังพิมพ์' : ''}</b> · ${ch.map((c) => `${esc(c.ref)} ${fmt(c.from)} → ${fmt(c.to)}`).join(' · ')} (เคลียร์ก่อนโอน)${ad ? ' · <b>พิมพ์ใบเสนอใหม่</b> ก่อนให้ CEO เซ็น' : ''}</span></div>`;
+}
+/** COO โอนแยกรายคน: แนบสลิปทีละคน · ถอดคนที่โอนไม่ได้ออก */
+function personsHtml(b, ad) {
+  if (b.status !== 'coo' && !(b.status === 'paid' && b.paidGroups)) return '';
+  const g = bGroupList(b), done = g.filter((x) => x.paid), paidAmt = done.reduce((t, x) => t + x.amount, 0);
+  const head = b.status === 'coo' ? `<div class="card"><div class="pp-prog"><span>โอนแล้ว <b class="num">${done.length}/${g.length}</b> คน · <b class="num">${fmt(paidAmt)}</b></span><small>เหลือ <b class="num">${fmt(b.total - paidAmt)}</b></small></div><div class="prog"><i style="width:${b.total ? Math.round(paidAmt / b.total * 100) : 0}%"></i></div>
+    <p class="formula" style="margin:8px 0 0">COO โอนให้แต่ละคนแยกกัน · แนบสลิปของคนไหน ใบของคนนั้นเดินต่อทันทีและแจ้งเตือนถึงเจ้าตัว</p></div>` : '';
+  const card = (x) => {
+    const open = ST.ppOpen === x.key, drop = ST.ppDrop === x.key;
+    const items = x.items.map((i) => `<div><span>${i.ref ? `<span class="num">${esc(i.ref)}</span> ` : ''}${esc(i.title)}</span><b class="num">${fmt(i.amount)}</b></div>`).join('');
+    let foot = '';
+    if (x.paid) foot = `<div class="pp-paid"><span class="pill p-closed">โอนแล้ว ${dt(x.paid.date)}</span>${fileBtn(x.paid.slip, 'สลิป')}${x.paid.whole ? '<small>สลิปรวม</small>' : ''}</div>`;
+    else if (ad && b.status === 'coo') {
+      if (drop) foot = `<div class="field"><label for="pp-note">เหตุผลที่ถอดออก (รายการกลับไปรอเข้าใบเสนอใหม่)</label><input class="inp" id="pp-note" placeholder="เช่น เลขบัญชีผิด · COO ยังไม่โอนคนนี้"></div><div style="display:flex;gap:8px"><button class="btn danger" style="flex:1" data-act="ppDrop" data-v="${esc(x.key)}">${ms('person_remove')}ยืนยันถอดออก</button><button class="btn" data-act="ppOpen" data-v="">ยกเลิก</button></div>`;
+      else if (open) foot = `<div class="fgrid"><div class="field"><label for="pp-date">วันที่โอน</label><input class="inp" type="date" id="pp-date" value="${todayTH()}"></div><div class="field"><label for="pp-slip">สลิปการโอนของ ${esc(x.payee)}</label><input class="inp" type="file" id="pp-slip" accept="image/*,application/pdf" style="padding-top:6px"></div></div>
+        <button class="btn pri block" data-act="ppSave" data-v="${esc(x.key)}">${ms('task_alt')}บันทึกการโอน ${fmt(x.amount)}</button><button class="btn ghost block sm" data-act="ppDropAsk" data-v="${esc(x.key)}">${ms('person_remove')}โอนให้คนนี้ไม่ได้? ถอดออกจากใบเสนอ</button>`;
+      else foot = `<button class="btn pri block" data-act="ppOpen" data-v="${esc(x.key)}">${ms('upload')}แนบสลิปของ ${esc(x.payee)}</button>`;
+    }
+    return `<div class="card pp ${x.paid ? 'paid' : ''}" data-pp="${esc(x.key)}"><div class="pp-h"><span class="pp-av">${esc(String(x.payee || '?').replace(/^(นาย|นางสาว|นาง|น\.ส\.)\s*/, '').charAt(0))}</span><span class="pp-n"><b>${esc(x.payee)}</b><small>${x.external ? 'ตามใบแจ้งหนี้' : bankLine(x)}</small></span><b class="num pp-amt">${fmt(x.amount)}</b></div><div class="lines pp-items">${items}</div>${foot}</div>`;
+  };
+  return head + `<div class="pp-list">${g.map(card).join('')}</div>`;
+}
+function removedHtml(b) {
+  if (!(b.removed || []).length) return '';
+  return `<div class="card"><h3>${ms('person_remove')}ถอดออกจากใบเสนอ (กลับไปรอ)</h3>${b.removed.map((x) => `<div style="padding:6px 0;border-top:1px solid var(--line)">${esc(x.payee)} · ${esc(x.ref || '')} ${esc(x.title)} · <b class="num">${fmt(x.amount)}</b><br><small style="color:var(--sub)">${esc(x.removeNote)} · ${esc(x.removedByName || '')}</small></div>`).join('')}</div>`;
 }
 // ----- พิมพ์ A4 -----
 const thDate = (s) => { if (!s) return ''; const [y, m, d] = s.split('-').map(Number); return `${d} ${MON[m - 1]} ${y + 543}`; };
@@ -983,22 +1108,30 @@ function detailOf(x, d, pcr, idx) {
     return `<div class="item">${head()}${pay}${kv([['ชื่องาน', `<b>${esc(d.title)}</b>`], ['วันที่ (ทริปใหม่)', `${thDate(d.go)}${d.back !== d.go ? ' – ' + thDate(d.back) : ''}${df.newBack !== df.oldBack ? ` <small>(เดิมกลับ ${thDate(df.oldBack)})</small>` : ''}`], ['เส้นทางการเดินทาง', route(d.stops)], ['ชื่อผู้เดินทาง', people(d)], (d.plan || p0Of(d)).veh ? ['ยานพาหนะ', esc(vehTextPlain(d.plan))] : null, (df.added || []).length ? ['สถานที่ที่เพิ่ม', df.added.map(esc).join(', ')] : null, e.note ? ['เหตุผลที่ต่อทริป', esc(e.note)] : null])}
       ${df.fuel ? row(`${carText(d.plan, set())[0]}เพิ่ม`, `${fmt(df.km)} กม.`, df.fuel) : ''}${df.allowance ? row('ค่าเบี้ยเลี้ยงเพิ่ม', '', df.allowance) : ''}${df.hotel ? row('ค่าที่พักเพิ่ม', '', df.hotel) : ''}${(df.extras || []).map((z) => row(esc(z.cat), esc(z.desc), z.amount)).join('')}${sum(x.amount)}</div>`; }
   if (x.kind === 'topup') return `<div class="item">${head()}${pay}${kv([['ชื่องาน', `<b>${esc(d.title)}</b>`], d.type === 'TRV' ? ['วันที่', `${thDate(d.go)}${d.back !== d.go ? ' – ' + thDate(d.back) : ''}`] : null])}${row('', 'ใช้จริงตามใบเสร็จ', d.actual ? d.actual.total : 0)}${row('', 'หัก เงินที่จ่ายไปแล้ว', -d.requested)}${sum(x.amount)}</div>`;
+  if (d.type === 'TRV' && d.preClear && x.kind === 'advance') { const a = d.preClear.actual || {}, p = d.plan, s = set();
+    return `<div class="item">${head()}${pay}${kv([['ชื่องาน', `<b>${esc(d.title)}</b>`], ['วันที่', `${thDate(d.go)}${d.back !== d.go ? ' – ' + thDate(d.back) : ''}`], ['เส้นทางการเดินทาง', route(d.stops)], ['ชื่อผู้เดินทาง', people(d)], ['สถานะ', `<b style="color:#2f6fb0">เคลียร์แล้วก่อนโอน · โอนตามยอดใช้จริง</b> (ขอไว้ ${fmt(d.preClear.requestedOrig)})`]])}
+      ${row(carText(p, s)[0] + ' (จ่ายจริง)', '', a.fuel)}${row('ค่าเบี้ยเลี้ยง', `${a.people} คน × ${a.days} วัน × ${fmt(s.allowance)}`, a.allowance)}${a.nights ? row('ค่าที่พัก (จ่ายจริง)', `${a.nights} คืน`, a.hotel) : ''}
+      ${(a.extras || []).map((e) => row(esc(e.cat), esc(e.desc), e.counted)).join('')}${sum(x.amount)}</div>`; }
   if (d.type === 'TRV') { const p = d.plan, s = set();
     return `<div class="item">${head()}${pay}${kv([['ชื่องาน', `<b>${esc(d.title)}</b>`], ['วันที่', `${thDate(d.go)}${d.back !== d.go ? ' – ' + thDate(d.back) : ''} (${p.days} วัน ${p.nights} คืน)`], ['เส้นทางการเดินทาง', route(d.stops)], ['ชื่อผู้เดินทาง', people(d)], (d.plan || p0Of(d)).veh ? ['ยานพาหนะ', esc(vehTextPlain(d.plan))] : null, d.kmReason ? ['หมายเหตุระยะทาง', esc(d.kmReason)] : null])}
       ${(() => { const c = carText(p, s); return row(c[0], c[1], p.fuel); })()}${row('ค่าเบี้ยเลี้ยง', `${p.people} คน × ${p.days} วัน × ${fmt(s.allowance)}`, p.allowance)}
       ${p.nights ? row('ค่าที่พัก', `${p.nights} คืน × ${p.rooms} ห้อง × ${fmt(p.rate)}${p.hotelOver ? ` <span class="cat">(เกินอัตรา ${fmt(s.hotel)})</span>` : ''}`, p.hotel, p.hotelOver && p.hotelReason ? `เหตุผล: ${esc(p.hotelReason)}` : '') : ''}
       ${(p.extras || []).map((e) => row(esc(e.cat), esc(e.desc), e.amount)).join('')}${sum(x.amount)}</div>`; }
   if (d.type === 'ADV') return `<div class="item">${head()}${pay}${kv([['เรื่อง', `<b>${esc(d.title)}</b>`], d.customer ? ['ลูกค้า', esc(d.customer)] : null, ['วันที่', thDate(d.go)]])}${d.items.map((i) => row('', esc(i.desc), i.amount)).join('')}${sum(x.amount)}<div class="xnote" style="margin:6px 0 0">หลังใช้จริง ทีมงานต้องเคลียร์ด้วยใบเสร็จภายใน ${set().clearDue} วัน</div></div>`;
-  return `<div class="item">${head()}${pay}${kv([['รายการ', `<b>${esc(d.title)}</b>`], d.cat ? ['หมวด', esc(d.cat)] : null, ['วันที่', thDate(d.go)], ['หลักฐาน', d.file ? 'แนบใบเสร็จ/ใบแจ้งหนี้ในระบบแล้ว' : 'ไม่มีไฟล์แนบในระบบ']])}${row('', esc(d.title), d.requested)}${sum(x.amount)}</div>`;
+  return `<div class="item">${head()}${pay}${kv([['รายการ', `<b>${esc(d.title)}</b>`], d.cat ? ['หมวด', esc(d.cat)] : null, ['วันที่', thDate(d.go)], ['หลักฐาน', docFiles(d).length ? `แนบใบเสร็จ/ใบแจ้งหนี้ในระบบแล้ว ${docFiles(d).length} ไฟล์` : 'ยังไม่มีไฟล์แนบในระบบ (แนบภายหลังได้)']])}${row('', esc(d.title), d.requested)}${sum(x.amount)}</div>`;
 }
 async function apvPrint(no) {
   const r = await api('apvGet', { no }); const b = r.batch;
-  const rows = b.items.map((x, i) => `<tr><td>${i + 1}</td><td>${esc(kindLabel(x))}${x.ref ? ` · ${esc(x.ref)}` : ''}<br><small>${esc(x.title)}</small></td><td>${esc(x.payee)}<br><small>${x.external ? 'ตามใบแจ้งหนี้' : x.bank ? `${esc(x.bank.bank)} ${esc(x.bank.no)}` : ''}</small>${x.bankPending ? `<br><span style="font-size:11.5px;color:#9A3B30">* บัญชีเพิ่งเปลี่ยน ${x.bank && x.bank.changedAt ? thDate(x.bank.changedAt.slice(0, 10)) : ''} · ยืนยันกับเจ้าตัวแล้ว</span>` : ''}</td><td style="text-align:right">${fmt(x.amount)}</td><td style="text-align:center">${b.ceoApp ? '<b style="color:#2E7D4F">✓</b>' : '<span class="box"></span>'}</td></tr>`).join('')
-    + (b.dropped || []).map((x) => `<tr class="drop"><td>–</td><td><s>${esc(kindLabel(x))}${x.ref ? ` · ${esc(x.ref)}` : ''}</s><br><small>${esc(x.title)}${x.ceoNote ? ` · CEO: ${esc(x.ceoNote)}` : ''}</small></td><td><s>${esc(x.payee)}</s></td><td style="text-align:right"><s>${fmt(x.amount)}</s></td><td style="text-align:center;color:#B83A30;font-size:11px">ไม่อนุมัติ</td></tr>`).join('');
+  if (isAdmin() && b.status === 'ceo') { api('apvPrinted', { no }).catch(() => {}); const lb = ST.apv && ST.apv.batches.find((x) => x.no === no); if (lb) lb.printedAt = new Date().toISOString(); }
+  const groups = bGroupList(b);
+  const rows = groups.map((g, gi) => `<tr class="pg"><td>${gi + 1}</td><td colspan="2"><b>${esc(g.payee)}</b> <small>${g.external ? '· ตามใบแจ้งหนี้' : g.bank ? `· ${esc(g.bank.bank)} ${esc(g.bank.no)}` : ''}</small>${g.items.some((x) => x.bankPending) ? `<br><span style="font-size:11.5px;color:#9A3B30">* บัญชีเพิ่งเปลี่ยน · ยืนยันกับเจ้าตัวแล้ว</span>` : ''}</td><td style="text-align:right"><b>${fmt(g.amount)}</b></td><td></td><td style="text-align:center"><span class="box"></span></td></tr>`
+    + g.items.map((x, ii) => `<tr><td style="color:#6b746e;font-size:11px">${gi + 1}.${ii + 1}</td><td colspan="2">${esc(kindLabel(x))}${x.ref ? ` · ${esc(x.ref)}` : ''}<br><small>${esc(x.title)}${x.preClear ? ` <span style="color:#2f6fb0">(เคลียร์แล้ว · ยอดตามใช้จริง · ขอไว้ ${fmt(x.preClear.orig)})</span>` : ''}</small></td><td style="text-align:right">${fmt(x.amount)}</td><td style="text-align:center">${b.ceoApp ? '<b style="color:#2E7D4F">✓</b>' : '<span class="box"></span>'}</td><td></td></tr>`).join('')).join('')
+    + (b.removed || []).map((x) => `<tr class="drop"><td>–</td><td colspan="2"><s>${esc(kindLabel(x))}${x.ref ? ` · ${esc(x.ref)}` : ''}</s> · <s>${esc(x.payee)}</s><br><small>${esc(x.title)} · ${esc(x.removeNote || 'ถอดออก')}</small></td><td style="text-align:right"><s>${fmt(x.amount)}</s></td><td style="text-align:center;color:#B83A30;font-size:11px">ถอดออก</td><td></td></tr>`).join('')
+    + (b.dropped || []).map((x) => `<tr class="drop"><td>–</td><td colspan="2"><s>${esc(kindLabel(x))}${x.ref ? ` · ${esc(x.ref)}` : ''}</s> · <s>${esc(x.payee)}</s><br><small>${esc(x.title)}${x.ceoNote ? ` · CEO: ${esc(x.ceoNote)}` : ''}</small></td><td style="text-align:right"><s>${fmt(x.amount)}</s></td><td style="text-align:center;color:#B83A30;font-size:11px">ไม่อนุมัติ</td><td></td></tr>`).join('');
   const p1 = `<div class="a4">${a4Head('บริษัท ซีทูเทค จำกัด', '99/3 หมู่ 9 ต.วังไก่เถื่อน อ.หันคา จ.ชัยนาท 17130', `<b>ใบเสนออนุมัติเบิกจ่าย</b>เลขที่ ${b.no}<br>วันที่ ${thDate(b.date)}`)}
     <p style="margin:0 0 12px;line-height:1.7">เรียน ประธานเจ้าหน้าที่บริหาร (CEO)<br>ขออนุมัติเบิกจ่ายตามรายการด้านล่าง โดยโอนเงินจากบัญชีบริษัท</p>
-    <table style="width:100%;border-collapse:collapse"><thead><tr><th style="width:26px">ที่</th><th style="text-align:left">รายการ</th><th style="text-align:left">ผู้รับเงิน / บัญชี</th><th style="text-align:right">จำนวนเงิน</th><th style="width:52px">CEO<br>อนุมัติ</th></tr></thead><tbody>${rows}</tbody>
-    <tfoot><tr><td></td><td colspan="2"><b>รวม ${b.items.length} รายการ</b></td><td style="text-align:right"><b>${fmt(b.total)}</b></td><td></td></tr></tfoot></table>
+    <table style="width:100%;border-collapse:collapse"><thead><tr><th style="width:26px">ที่</th><th style="text-align:left" colspan="2">ผู้รับเงิน / รายการ</th><th style="text-align:right">จำนวนเงิน</th><th style="width:48px">CEO<br>อนุมัติ</th><th style="width:48px">COO<br>โอนแล้ว</th></tr></thead><tbody>${rows}</tbody>
+    <tfoot><tr><td></td><td colspan="2"><b>รวม ${groups.length} คน · ${b.items.length} รายการ</b></td><td style="text-align:right"><b>${fmt(b.total)}</b></td><td></td><td></td></tr></tfoot></table>
     <div class="words">(${bahtText(b.total)})</div>
     <div style="font-size:12px;color:#4a4a48">เอกสารแนบ: รายละเอียดแต่ละรายการ (หน้าถัดไป) · รายการที่จ่ายจากเงินสดย่อยไม่อยู่ในใบนี้${r.fullBank ? '' : ' · เลขบัญชีแสดงบางส่วน (ให้ผู้ดูแลเลขบัญชีพิมพ์เพื่อแสดงเต็ม)'}</div>
     <div style="font-size:12.5px;margin-top:14px">หมายเหตุ CEO: ...........................................................................................................................</div>
@@ -1066,7 +1199,7 @@ function vNew() {
       <div class="field"><label for="n-cat">หมวด</label><select class="sel" id="n-cat" data-nf="cat">${opts(cats(), f.cat)}</select></div>
       <div class="field"><label for="n-date">วันที่จ่าย</label><input class="inp" type="date" id="n-date" data-nf="date" value="${f.date}"></div>
       <div class="field"><label for="n-amt">ยอดเงิน (บาท)</label><input class="inp num" type="number" inputmode="decimal" id="n-amt" data-nf="amount" value="${esc(f.amount)}"></div>
-      ${fileF('รูปใบเสร็จ / ใบแจ้งหนี้')}
+      <div class="field"><label for="n-file">บิล / ใบแจ้งหนี้ (ไม่บังคับ · เลือกได้หลายไฟล์ · แนบเพิ่มภายหลังได้)</label><input class="inp" type="file" id="n-file" multiple accept="image/*,application/pdf" style="padding-top:6px"></div>
       <div class="field full"><label>จ่ายจาก</label>${srcPick('n-src', f.src, 'ลงสมุดเมื่อแนบสลิปแล้ว')}</div></div>`;
     side = `<h3>${ms('storefront')}ค่าใช้จ่ายบริษัท</h3><div style="display:flex;justify-content:space-between;align-items:baseline;margin:4px 0 6px"><span>ยอดเงิน</span><span class="big" id="nfTot">${fmt(Number(f.amount) || 0)}</span></div><p class="formula">เงินสดย่อย: ตัดเงินและลงสมุดทันที · โอน: เข้ารายการรอโอน ลงสมุดเมื่อบันทึกโอนพร้อมสลิป</p>`;
   }
@@ -1082,13 +1215,15 @@ async function nfSave(b) {
     const filled = f.items.filter((i) => i.desc.trim() || i.amount !== '');
     if (!filled.length) chk.push(['#ni-d-0', 'รายการ'], ['#ni-a-0', 'ยอดประมาณ', vMoney]);
     f.items.forEach((i, n) => { if (i.desc.trim() || i.amount !== '') chk.push([`#ni-d-${n}`, `รายการที่ ${n + 1}`], [`#ni-a-${n}`, `ยอดรายการที่ ${n + 1}`, vMoney]); });
-  } else chk.push(['#n-amt', 'ยอดเงิน', vMoney], ['#n-file', 'ไฟล์ใบเสร็จ', vFileOk]);
+  } else if (t === 'EXP') chk.push(['#n-amt', 'ยอดเงิน', vMoney]);
+  else chk.push(['#n-amt', 'ยอดเงิน', vMoney], ['#n-file', 'ไฟล์ใบเสร็จ', vFileOk]);
   if (t === 'EXP' && f.src === 'BANK') chk.push(['#n-payee', 'จ่ายให้ (ผู้รับโอน)']);
   if (!need(chk)) return;
   await busy(b, async () => {
-    const file = t === 'ADV' ? null : await fileOf($('#n-file'));
+    const file = t === 'ADV' || t === 'EXP' ? null : await fileOf($('#n-file'));
+    const files = t === 'EXP' ? await filesOf($('#n-file')) : undefined;
     const form = { staffId: f.staffId, customer: f.customer, title: f.title, date: f.date, items: f.items, cat: f.cat, amount: f.amount, payee: f.payee, src: f.src };
-    const r = await api('docCreate', { type: t, form, file });
+    const r = await api('docCreate', { type: t, form, file, files });
     ST.nf = null; await reloadTrv(); ST.pc = null; ST.ledger = null; ST.payq = null;
     ST.view = 'claims'; render(); drawDoc(r.no);
     toast({ ADV: f.src === 'PC' ? `สร้าง ${r.no} · จ่ายเงินสดย่อยแล้ว` : `สร้าง ${r.no} · เข้ารายการรอโอน`, RMB: `บันทึก ${r.no} · รอจ่ายคืน`, EXP: f.src === 'PC' ? `บันทึก ${r.no} · ลงสมุดแล้ว` : `บันทึก ${r.no} · เข้ารายการรอโอน` }[t]);
@@ -1126,13 +1261,13 @@ function drawOther(d) {
   const lead = d.staffId === ST.me.id;
   const act = actionsOther(d, lead) + (isCust() && ST.trialMode ? `<div style="border-top:1px dashed var(--line);padding-top:10px"><button class="btn block" style="color:var(--bad);border-color:var(--bad)" data-act="delAsk">${ms('delete_forever')}ลบใบนี้ (โหมดทดลอง)</button><div id="delBox"></div></div>` : '');
   const kv = [d.type === 'EXP' ? ['จ่ายให้', esc(d.payee || '—')] : [d.type === 'RMB' ? 'ทีมงานที่สำรองจ่าย' : 'ผู้รับเงิน', esc(d.staffName)], d.customer ? ['ลูกค้า', esc(d.customer)] : null, d.cat ? ['หมวด', esc(d.cat)] : null, ['วันที่', dt(d.go)], ['จ่ายโดย', d.paidFrom ? SRC_LABEL[d.paidFrom] : d.status === 'pending' ? 'รอจ่ายคืน' : '—'], ['บันทึกโดย', esc(d.createdByName || '')]].filter(Boolean);
-  const items = d.type === 'ADV' ? `<div class="card"><h3>${ms('list_alt')}รายการที่ขอ</h3><div class="lines">${d.items.map((i) => `<div><span>${esc(i.desc)}</span><b>${fmt(i.amount)}</b></div>`).join('')}<div class="tot"><span>ยอดเงินทดรอง</span><b>${fmt(d.requested)}</b></div></div></div>` : `<div class="card"><div class="lines"><div class="tot" style="border:0;margin:0;padding:0"><span>ยอดเงิน</span><b>${fmt(d.requested)}</b></div></div>${d.file ? `<div style="margin-top:10px">${fileBtn(d.file, 'ใบเสร็จ')}</div>` : ''}</div>`;
+  const items = d.type === 'ADV' ? `<div class="card"><h3>${ms('list_alt')}รายการที่ขอ</h3><div class="lines">${d.items.map((i) => `<div><span>${esc(i.desc)}</span><b>${fmt(i.amount)}</b></div>`).join('')}<div class="tot"><span>ยอดเงินทดรอง</span><b>${fmt(d.requested)}</b></div></div></div>` : `<div class="card"><div class="lines"><div class="tot" style="border:0;margin:0;padding:0"><span>ยอดเงิน</span><b>${fmt(d.requested)}</b></div></div>${d.type === 'EXP' ? '' : d.file ? `<div style="margin-top:10px">${fileBtn(d.file, 'ใบเสร็จ')}</div>` : ''}</div>${d.type === 'EXP' ? expFilesCard(d) : ''}`;
   const vbtn = voucherBtn(d);
   const actual = d.type === 'ADV' && d.actual ? `${vbtn}<div class="card"><h3>${ms('fact_check')}ผลเคลียร์ (${d.actual.receipts.length} ใบเสร็จ)</h3><div class="lines">${d.actual.receipts.map((r) => `<div><span>${esc(r.desc)}<br><span class="f">${esc(r.cat)}${r.why ? ` · ไม่มีใบเสร็จ: ${esc(r.why)}` : ''}</span></span><span style="display:flex;gap:6px;align-items:center">${r.file ? fileBtn(r.file, 'ดู') : ''}<b>${fmt(r.amount)}</b></span></div>`).join('')}<div class="tot"><span>ใช้จริง</span><b>${fmt(d.actual.total)}</b></div></div>
       <div class="diffbox ${d.diff < 0 ? 'refund' : d.diff > 0 ? 'topup' : 'even'}" style="margin-top:10px"><span>${d.diff < 0 ? 'ทีมงานคืนเงิน' : d.diff > 0 ? 'บริษัทจ่ายเพิ่ม' : 'พอดี'}</span><b>${fmt(Math.abs(d.diff))} บาท</b></div></div>` : '';
   const pay = d.payment ? `<div class="lines" style="margin-top:6px"><div><span>โอนเมื่อ ${dt(d.payment.date)} · ${esc(d.payment.bank)}</span>${fileBtn(d.payment.slip, 'สลิป')}</div></div>` : '';
   openDrawer(`<div class="dh"><div><div style="display:flex;gap:8px;align-items:center">${tpill(d.type)}${statusPill(d)}</div><h2 class="num">${d.no}</h2></div><button class="btn sm ghost x" data-act="closeDrawer" aria-label="ปิด">${ms('close')}</button></div>
-    <div class="db">${d.batch ? `<div class="banner info">${ms('approval')}<span>อยู่ในใบเสนอ CEO <b class="num">${esc(d.batch)}</b> · รอขั้นตอนโอน</span></div>` : ''}${d.ceoNote && !d.batch && ['approve', 'topup'].includes(d.status) ? `<div class="banner warn">${ms('edit_note')}<span>CEO: <b>${esc(d.ceoNote)}</b> · กลับมารอเข้าใบเสนอใหม่</span></div>` : ''}
+    <div class="db">${d.batch ? `<div class="banner info">${ms('approval')}<span>อยู่ในใบเสนอ CEO <b class="num">${esc(d.batch)}</b> · ${BSTAGE_PILL[d.batchStage] || 'รอขั้นตอนโอน'}</span></div>` : ''}${preClearCard(d)}${tripBanners(d)}${d.ceoNote && !d.batch && ['approve', 'topup'].includes(d.status) ? `<div class="banner warn">${ms('edit_note')}<span>CEO: <b>${esc(d.ceoNote)}</b> · กลับมารอเข้าใบเสนอใหม่</span></div>` : ''}
       ${d.rejectNote && d.status === 'rejected' ? `<div class="banner bad">${ms('block')}<span>${d.cancelled ? 'ยกเลิก' : 'ไม่อนุมัติ'}: <b>${esc(d.rejectNote)}</b></span></div>` : ''}
       <div class="card"><span class="kind">${TYPE_LABEL[d.type]}</span><b style="font-size:16px;display:block;margin-top:6px">${esc(d.title)}</b><dl class="kv" style="margin-top:8px">${kv.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>${pay}</div>
       ${items}${actual}
@@ -1144,7 +1279,8 @@ function actionsOther(d, lead) {
   if (isAdmin()) {
     if (d.status === 'pending') return `<div class="srcpick"><label><input type="radio" name="rsrc" value="PC" ${pc >= d.requested ? 'checked' : 'disabled'}> จ่ายเงินสดย่อย<br><small style="color:var(--sub)">เหลือ ${fmt(pc)}</small></label><label><input type="radio" name="rsrc" value="BANK" ${pc >= d.requested ? '' : 'checked'} ${pp.hasBank ? '' : 'disabled'}> โอนคืน<br><small style="color:var(--sub)">${pp.hasBank ? 'เข้ารายการรอโอน' : 'ยังไม่มีบัญชี'}</small></label></div>
       <button class="btn pri block" data-act="rmbPay">${ms('payments')}จ่ายคืน ${fmt(d.requested)} บาท</button><button class="btn block" data-act="decideAsk" data-v="cancel">${ms('block')}ยกเลิกใบนี้</button><div id="noteBox"></div>`;
-    if (d.status === 'approve') return `<button class="btn pri block" data-act="go" data-v="payq">${ms('approval')}ไปที่ขออนุมัติโอน</button><button class="btn block" data-act="decideAsk" data-v="cancel">${ms('block')}ยกเลิกใบนี้</button><div id="noteBox"></div>`;
+    if (d.status === 'approve' && (d.type || 'TRV') === 'TRV') return `${preClearBtn(d)}<button class="btn ${preClearBtn(d).includes('openPreClr') ? '' : 'pri'} block" data-act="go" data-v="payq">${ms('approval')}ไปที่ขออนุมัติโอน</button>${tripTools(d)}`;
+    if (d.status === 'approve') return `${preClearBtn(d)}<button class="btn ${preClearBtn(d).includes('openPreClr') ? '' : 'pri'} block" data-act="go" data-v="payq">${ms('approval')}ไปที่ขออนุมัติโอน</button>${tripTools(d)}${d.batch ? '' : `<button class="btn block" data-act="decideAsk" data-v="cancel">${ms('block')}ยกเลิกใบนี้</button><div id="noteBox"></div>`}`;
     if (d.type === 'ADV' && d.status === 'open') return `<button class="btn pri block" data-act="openAdv" data-v="${d.no}">${ms('fact_check')}เคลียร์ด้วยใบเสร็จ</button>`;
     if (d.status === 'refund' || (d.status === 'topup' && d.settleSrc === 'BANK')) return actionsFor(d, lead);
     return '';
@@ -1569,7 +1705,7 @@ document.addEventListener('click', async (e) => {
       const item = nav().find((n) => n[0] === v);
       if (item && item[3] === 'soon') { toast('ส่วนนี้จะเปิดในรอบถัดไป', 'schedule'); return; }
       if (v === 'req' && !(ST.form && ST.view === 'req')) ST.form = null;
-      if (v !== 'clr') ST.clr = null; if (v !== 'adv') ST.ac = null; if (v !== 'pc') ST.pcForm = '';
+      if (v !== 'clr') { ST.clr = null; ST.clrPre = false; } if (v !== 'adv') ST.ac = null; if (v !== 'pc') ST.pcForm = '';
       ST.view = v; ST.bankEdit = null; closeDrawer(); render(); $('#view').scrollTop = 0; return;
     }
     if (a === 'goSet') { ST.view = 'settings'; ST.setTab = v; render(); return; }
@@ -1705,12 +1841,35 @@ document.addEventListener('keydown', (e) => {
 // ===== events: รอบ 2 =====
 async function reloadTrv() { ST.trv = await api('trvList'); ST.payq = null; ST.pc = null; ST.ledger = null; ST.apv = null; }
 const fileOf = async (inp) => inp && inp.files && inp.files[0] ? readFile(inp.files[0]) : null;
+/** หลายไฟล์ (ใบแจ้งหนี้/บิล EXP) สูงสุด 10 */
+const filesOf = async (inp) => { const L = inp && inp.files ? [...inp.files].slice(0, 10) : []; const out = []; for (const f of L) out.push(await readFile(f)); if (out.reduce((t, f) => t + String(f.data).length, 0) > 8e6) throw new Error('ไฟล์รวมใหญ่เกินไป · แนบทีละ 2–3 ไฟล์ (กดแนบบิลเพิ่มได้หลายครั้ง)'); return out; };
+const docFiles = (d) => (d.files && d.files.length ? d.files : d.file ? [d.file] : []);
 async function trvClick(a, v, b) {
   if (a === 'more') { ST.view = 'more'; closeDrawer(); render(); return true; }
   if (a === 'newReq') { ST.form = newForm(); ST.view = 'req'; closeDrawer(); render(); refreshRoute(); return true; }
   if (a === 'openDoc') { drawDoc(v); return true; }
-  if (a === 'closeDrawer') { closeDrawer(); return true; }
-  if (a === 'openClr') { const d = doc(v); ST.clrNo = v; ST.clr = null; ST.view = 'clr'; closeDrawer(); render(); $('#view').scrollTop = 0; void d; return true; }
+  if (a === 'closeDrawer') { if (ST.ceoBack && isCeo()) { ceoBackToBatch(); return true; } closeDrawer(); return true; }
+  if (a === 'expAttach') {
+    const d = doc(ST.openNo); const inp = $('#x-files'); if (!d || !inp || !inp.files.length) { toast('เลือกไฟล์บิลก่อน', 'error'); return true; }
+    await busy(b, async () => { const files = await filesOf(inp); const r = await api('docAttach', { no: d.no, files }); await reloadTrv(); ST.ledger = null; render(); drawDoc(d.no); toast(`แนบบิลแล้ว ${r.added} ไฟล์ · รวม ${r.total} ไฟล์`, 'attach_file'); });
+    return true;
+  }
+  if (a === 'tripAsk') { const d = doc(ST.openNo); if (!d) return true; const box = $('#tripBox'); if (box) { box.innerHTML = tripForm(d, v); box.scrollIntoView({ block: 'nearest' }); setTimeout(() => $(v === 'post' ? '#tp-go' : '#tp-note')?.focus(), 60); } return true; }
+  if (a === 'tripGo') {
+    const d = doc(ST.openNo); if (!d) return true;
+    if (v === 'post' && !need([['#tp-go', 'วันไปใหม่'], ['#tp-note', 'เหตุผลที่เลื่อน']])) return true;
+    if (v === 'cancel' && !need([['#tp-note', 'เหตุผลที่ยกเลิก']])) return true;
+    await busy(b, async () => {
+      const note = $('#tp-note').value.trim(); let msg;
+      if (v === 'post') { const r = await api('trvPostpone', { no: d.no, go: $('#tp-go').value, note }); msg = `เลื่อนทริปเป็น ${dRange(r.go, r.back)} แล้ว · แจ้งผู้เดินทางแล้ว`; }
+      else if (v === 'cancel') { const r = await api('trvCancelTrip', { no: d.no, note }); msg = r.refund ? `ยกเลิกทริปแล้ว · รอ ${d.staffName} คืนเงิน ${fmt(r.refund)} บาท` : 'ยกเลิกทริปแล้ว'; }
+      else { const pc = payPcInfo(d); const r = await api('payByPc', { id: pc.id, note }); msg = `จ่ายเงินสดย่อย ${fmt(r.amount)} บาทแล้ว${r.batch ? ` · ถอดจาก ${r.batch}` : ''}`; }
+      await reloadTrv(); ST.apv = null; ST.pc = null; ST.ledger = null; render(); drawDoc(d.no); toast(msg, 'task_alt');
+    });
+    return true;
+  }
+  if (a === 'openPreClr') { const d = doc(v); ST.clrNo = v; ST.clrPre = true; ST.clr = d && d.preClear ? clrFromPre(d) : null; ST.view = 'clr'; closeDrawer(); render(); $('#view').scrollTop = 0; return true; }
+  if (a === 'openClr') { const d = doc(v); ST.clrNo = v; ST.clr = null; ST.clrPre = false; ST.view = 'clr'; closeDrawer(); render(); $('#view').scrollTop = 0; void d; return true; }
   if (a === 'cancelForm') { ST.form = null; ST.view = 'home'; render(); return true; }
   // รอบ 3: สร้างใบใหม่ / เคลียร์เงินทดรอง / สมุด / เงินสดย่อย
   if (a === 'nfType') { if (v === 'TRV') return trvClick('newReq', v, b); if (v === 'PC') { ST.view = 'pc'; ST.pcForm = 'topup'; render(); $('#pc-amt')?.focus(); return true; } ST.nfType = v; render(); return true; }
@@ -1735,7 +1894,7 @@ async function trvClick(a, v, b) {
   if (a === 'rfP') { ST.rf.p = v; render(); return true; }
   if (a === 'rptXlsx') { await busy(b, rptXlsx); return true; }
   // รอบ 4: ใบเสนอ CEO
-  if (a === 'openBatch') { drawBatch(v); return true; }
+  if (a === 'openBatch') { ST.ppOpen = null; ST.ppDrop = null; drawBatch(v); return true; }
   if (a === 'apvPrint') { await busy(b, () => apvPrint(v)); return true; }
   if (a === 'doPrint') { printNow(); return true; }
   if (a === 'openTab') { window.open(location.href.split('#')[0], '_blank', 'noopener'); return true; }
@@ -1757,8 +1916,22 @@ async function trvClick(a, v, b) {
   }
   if (a === 'apvSent') { const no = ST.openBatch; await busy(b, async () => { await api('apvSent', { no, ref: $('#b-ref').value }); await loadApv(); drawBatch(no); toast('ส่งเรื่องเข้าระบบแล้ว · รอ COO'); }); return true; }
   if (a === 'apvPaid') {
-    const no = ST.openBatch; if (!need([['#b-date', 'วันที่โอน'], ['#b-slip', 'สลิปการโอน', vSlip]])) return true;
+    const no = ST.openBatch; ST.ppOpen = null; if (!need([['#b-date', 'วันที่โอน'], ['#b-slip', 'สลิปการโอน', vSlip]])) return true;
     await busy(b, async () => { const slip = await fileOf($('#b-slip')); await api('apvPaid', { no, slip, date: $('#b-date').value }); await reloadTrv(); await loadApv(); drawBatch(no); toast(`${no} โอนสำเร็จ · ใบเบิกเดินต่อแล้ว`, 'task_alt'); });
+    return true;
+  }
+  if (a === 'ppOpen') { ST.ppOpen = v || null; ST.ppDrop = null; drawBatch(ST.openBatch); if (v) setTimeout(() => document.querySelector(`[data-pp="${v}"]`)?.scrollIntoView({ block: 'nearest' }), 50); return true; }
+  if (a === 'ppDropAsk') { ST.ppDrop = v; ST.ppOpen = null; drawBatch(ST.openBatch); setTimeout(() => $('#pp-note')?.focus(), 50); return true; }
+  if (a === 'ppSave') {
+    const no = ST.openBatch; if (!need([['#pp-date', 'วันที่โอน'], ['#pp-slip', 'สลิปการโอน', vSlip]])) return true;
+    await busy(b, async () => { const slip = await fileOf($('#pp-slip')); const r = await api('apvPaidPerson', { no, key: v, slip, date: $('#pp-date').value }); ST.ppOpen = null; await reloadTrv(); await loadApv(); drawBatch(no);
+      toast(r.done ? `${no} โอนครบทุกคนแล้ว` : 'บันทึกการโอนแล้ว · ใบของคนนี้เดินต่อแล้ว', 'task_alt'); });
+    return true;
+  }
+  if (a === 'ppDrop') {
+    const no = ST.openBatch; if (!need([['#pp-note', 'เหตุผลที่ถอดออก']])) return true;
+    await busy(b, async () => { const r = await api('apvDropPerson', { no, key: v, note: $('#pp-note').value }); ST.ppDrop = null; await reloadTrv(); await loadApv();
+      if (r.status === 'cancelled') { closeDrawer(); toast(`${no} ไม่มีรายการเหลือ · ยกเลิกใบเสนอแล้ว`); } else { drawBatch(no); toast('ถอดออกแล้ว · รายการกลับไปรอเข้าใบเสนอใหม่'); } });
     return true;
   }
   if (a === 'apvCancelAsk') { $('#noteBox').innerHTML = `<div class="field"><label for="dn">เหตุผลที่ยกเลิกใบเสนอ</label><input class="inp" id="dn"></div><button class="btn danger block" style="margin-top:6px" data-act="apvCancelGo">${ms('block')}ยืนยันยกเลิกใบเสนอ</button>`; $('#dn').focus(); return true; }
@@ -1880,6 +2053,16 @@ async function trvClick(a, v, b) {
     });
     return true;
   }
+  if (a === 'clrPre') {
+    const d = doc(ST.clrNo), r = clrCalc(d, k); if (r.err) { toast(`กรอกข้อมูลไม่ครบ: ${r.err}`, 'error'); if (k.fuel === '' || k.fuel == null) need([['#c-fuel', 'ค่าน้ำมันจริง']]); return true; }
+    await busy(b, async () => {
+      const clr = { fuel: Number(k.fuel), people: Number(k.people), days: Number(k.days), stays: k.stays, ex: k.ex, files: k.files, note: k.note };
+      const res = await api('trvPreClear', { no: d.no, clr, hotelEx: k.hotelEx, exOver: k.exOver });
+      const no = d.no; ST.clr = null; ST.clrPre = false; await reloadTrv(); ST.view = 'claims'; render(); drawDoc(no);
+      toast(`เคลียร์ก่อนโอนแล้ว · จะโอน ${fmt(res.total)} บาท${res.batch ? ` · พิมพ์ใบเสนอ ${res.batch} ใหม่ก่อนให้ CEO เซ็น` : ''}`, 'task_alt');
+    });
+    return true;
+  }
   if (a === 'clrReturn') {
     if (!need([['#c-ret', 'เหตุผลที่ส่งกลับ']])) return true; const note = $('#c-ret').value.trim();
     await busy(b, async () => { await api('trvClearConfirm', { no: ST.clrNo, decision: 'return', note }); ST.clr = null; await reloadTrv(); ST.view = 'clear'; render(); toast('ส่งกลับให้แก้แล้ว'); });
@@ -1950,7 +2133,7 @@ function updCalc() {
   const nb = tmp.querySelector('#calcBody'), ob = $('#calcBody'); if (nb && ob && nb.innerHTML !== ob.innerHTML) ob.replaceWith(nb);
   ['clrSubmit', 'clrConfirm'].forEach((a) => { const n = tmp.querySelector(`[data-act="${a}"]`), o = $(`#view [data-act="${a}"]`); if (n && o) o.disabled = n.disabled; });
 }
-document.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.tcard[data-act]')) { e.preventDefault(); e.target.click(); } if (e.key === 'Escape') closeDrawer(); });
+document.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.tcard[data-act]')) { e.preventDefault(); e.target.click(); } if (e.key === 'Escape') { if (ST.ceoBack && isCeo()) ceoBackToBatch(); else closeDrawer(); } });
 
 let cdTimer = null;
 function afterRender() {
@@ -2016,6 +2199,41 @@ function apvWho(b, ad) {
   return '';
 }
 
+/** CEO ดูรายละเอียดทีละใบ: ตัดสินในหน้านั้นเลย · ปุ่ม < > · ปิด/ย้อน/แตะพื้นหลัง = กลับใบเสนอ (ไม่หลุด) */
+const ceoNavList = (b) => b.items.filter((x) => x.ref);
+function ceoOpen(ref, replace) {
+  const no = ST.openBatch || ST.ceoBack; const b = ST.apv && ST.apv.batches.find((x) => x.no === no); if (!b) return;
+  const L = ceoNavList(b), i = L.findIndex((x) => x.ref === ref); if (i < 0) return;
+  drawDoc(ref); ST.ceoBack = no; ST.ceoRef = ref; ST.openBatch = no;
+  if (!replace && !(history.state && history.state.c2ceo)) { try { history.pushState({ c2ceo: 1 }, ''); } catch (e) { /* ไม่เป็นไร */ } }
+  const x = L[i], S = ceoState(b), d = S.dec[x.id] || '';
+  const dh = $('#drawer .dh'); if (!dh) return;
+  dh.outerHTML = `<div class="dh ceodh"><button class="btn sm ghost" data-act="ceoBack" aria-label="กลับไปใบเสนอ ${esc(no)}">${ms('arrow_back')}</button>
+    <div class="ceodh-t"><b>ใบที่ ${i + 1} / ${L.length}</b><small class="num">${esc(x.ref)} · ${esc(no)}${d ? ` · <span class="${d === 'ok' ? 'okt' : 'not'}">${d === 'ok' ? 'อนุมัติแล้ว' : 'ไม่อนุมัติ'}</span>` : ''}</small></div>
+    <button class="btn sm ghost" data-act="ceoNav" data-v="${i - 1}" ${i ? '' : 'disabled'} aria-label="ใบก่อนหน้า">${ms('chevron_left')}</button><button class="btn sm ghost" data-act="ceoNav" data-v="${i + 1}" ${i < L.length - 1 ? '' : 'disabled'} aria-label="ใบถัดไป">${ms('chevron_right')}</button></div>`;
+  $('#drawer .df')?.remove();
+  $('#drawer').insertAdjacentHTML('beforeend', `<div class="df ceodock">
+    ${d === 'no' ? `<div class="field" style="margin:0"><label for="cdn">เหตุผล / สิ่งที่ให้แก้ (บังคับ)</label><input class="inp" id="cdn" data-cnote="${esc(x.id)}" maxlength="200" value="${esc(S.notes[x.id] || '')}" placeholder="เช่น ขอใบเสนอราคาเปรียบเทียบ"></div>` : ''}
+    <div class="two"><button class="btn cno ${d === 'no' ? 'on' : ''}" data-act="ceoDec" data-v="${esc(x.id)}" data-k="no" aria-pressed="${d === 'no'}">${ms(d === 'no' ? 'cancel' : 'close')}ไม่อนุมัติ</button><button class="btn cok ${d === 'ok' ? 'on' : ''}" data-act="ceoDec" data-v="${esc(x.id)}" data-k="ok" aria-pressed="${d === 'ok'}">${ms('check')}${d === 'ok' ? 'อนุมัติแล้ว' : 'อนุมัติใบนี้'}</button></div>
+    ${d === 'no' ? `<button class="btn pri block" data-act="ceoDecNext" data-v="${esc(x.id)}">${ms('arrow_forward')}บันทึก · ไปใบถัดไป</button>` : ''}
+    <small class="ceohint">ตัดสินแล้วไปใบถัดไปอัตโนมัติ · ยังไม่ส่งจริงจนกด "ยืนยัน" ที่หน้าใบเสนอ</small></div>`);
+  $('#drawer .db') && ($('#drawer .db').scrollTop = 0);
+}
+/** ไปใบถัดไปที่ยังไม่ตัดสิน · ครบแล้วกลับหน้าใบเสนอ (เห็นสรุป + ปุ่มยืนยัน) */
+function ceoAdvance(b, fromId) {
+  const S = ceoState(b), L = ceoNavList(b), i = L.findIndex((x) => x.id === fromId);
+  const nxt = [...L.slice(i + 1), ...L.slice(0, Math.max(0, i))].find((x) => !S.dec[x.id]);
+  if (nxt) { ceoOpen(nxt.ref, true); return; }
+  ceoBackToBatch();
+  if (b.items.every((x) => S.dec[x.id])) toast('ตัดสินครบทุกรายการแล้ว · ตรวจแล้วกดยืนยัน', 'task_alt');
+  else setTimeout(() => document.querySelector('.ceoit:not(.kept):not(.dropped)')?.scrollIntoView({ block: 'center' }), 80);
+}
+function ceoBackToBatch() {
+  const no = ST.ceoBack; if (!no) return; ST.ceoBack = null; ST.ceoRef = null;
+  if (history.state && history.state.c2ceo) { ST.ceoPopSkip = true; try { history.back(); } catch (e) { ST.ceoPopSkip = false; } }
+  drawBatch(no);
+}
+window.addEventListener('popstate', () => { if (ST.ceoPopSkip) { ST.ceoPopSkip = false; return; } if (ST.ceoBack) ceoBackToBatch(); });
 function addBackBar(no) {
   const dh = $('#drawer .dh'); if (!dh) return;
   dh.insertAdjacentHTML('beforebegin', `<button class="ceoback" data-act="ceoBack">${ms('arrow_back')}กลับไปใบเสนอ <span class="num">${esc(no)}</span> (ตัดสินต่อ)</button>`);
@@ -2029,16 +2247,16 @@ function drawCeo(b) {
   ST.ceoBack = null; const S = ceoState(b);
   const item = (x, i) => { const d = S.dec[x.id] || '', canView = !!x.ref;
     return `<div class="ceoit ${d === 'no' ? 'dropped' : d === 'ok' ? 'kept' : ''}" data-ci="${esc(x.id)}">
-      <div class="ceoit-h"><span class="ceono num">${i + 1}</span><span style="flex:1;min-width:0">${x.type && x.type !== 'PC' ? tpill(x.type) + ' ' : ''}<b>${esc(x.title)}</b>
+      <div class="ceoit-h"><span class="ceono num">${i + 1}</span><span style="flex:1;min-width:0">${x.type && x.type !== 'PC' ? tpill(x.type) + ' ' : ''}<b>${esc(x.title)}</b>${preNote(x)}
         <small>${esc(kindLabel(x))}${x.ref ? ` · <span class="num">${esc(x.ref)}</span>` : ''} · ${esc(x.payee)}${x.external ? ' · ตามใบแจ้งหนี้' : x.bank ? ` · ${esc(x.bank.bank)} <span class="num">${esc(x.bank.no)}</span>` : ''}</small></span><b class="num amt">${fmt(x.amount)}</b></div>
-      ${canView ? `<button class="btn sm viewbtn" data-act="ceoView" data-v="${esc(x.ref)}">${ms('visibility')}ดูรายละเอียดใบนี้</button>` : `<button class="btn sm viewbtn" data-act="apvPrint" data-v="${b.no}">${ms('description')}ดูรายละเอียด (ใบเสนอ A4 หน้า 2)</button>`}
+      ${canView ? `<button class="btn sm viewbtn" data-act="ceoView" data-v="${esc(x.ref)}">${ms('visibility')}ดูรายละเอียด · ตัดสินในหน้านั้นได้</button>` : `<button class="btn sm viewbtn" data-act="apvPrint" data-v="${b.no}">${ms('description')}ดูรายละเอียด (ใบเสนอ A4 หน้า 2)</button>`}
       <div class="seg" role="group" aria-label="การตัดสินใจ ${esc(x.title)}"><button class="ok ${d === 'ok' ? 'on' : ''}" data-act="ceoTog" data-v="${esc(x.id)}" data-k="ok" aria-pressed="${d === 'ok'}">${ms(d === 'ok' ? 'check_circle' : 'check')}อนุมัติ</button><button class="no ${d === 'no' ? 'on' : ''}" data-act="ceoTog" data-v="${esc(x.id)}" data-k="no" aria-pressed="${d === 'no'}">${ms(d === 'no' ? 'cancel' : 'close')}ไม่อนุมัติ/ให้แก้</button></div>
       <div class="field cnote" ${d === 'no' ? '' : 'hidden'}><label for="cn-${i}">เหตุผล / สิ่งที่ให้แก้</label><input class="inp" id="cn-${i}" data-cnote="${esc(x.id)}" maxlength="200" value="${esc(S.notes[x.id] || '')}" placeholder="เช่น ขอใบเสนอราคาเปรียบเทียบ"></div></div>`; };
   openDrawer(`<div class="dh"><div><div style="display:flex;gap:8px;align-items:center"><span class="tpill t-PC">APV</span><span class="pill p-pending">รอ CEO อนุมัติ</span></div><h2 class="num">${b.no}</h2></div><button class="btn sm ghost x" data-act="closeDrawer" aria-label="ปิด">${ms('close')}</button></div>
     <div class="db">${stepper(b.status)}
       <div class="money3" style="grid-template-columns:1fr"><div class="hl"><small>ยอดรวม ${b.items.length} รายการ · เสนอโดย ${esc(b.createdByName || '')}</small><b>${fmt(b.total)}</b><small>(${bahtText(b.total)})</small></div></div>
       <div class="ceobar"><button class="btn sm" data-act="ceoAll" data-v="ok">${ms('done_all')}อนุมัติทุกรายการ</button><button class="btn sm" data-act="apvPrint" data-v="${b.no}">${ms('description')}ใบเสนอ A4</button></div>
-      <div class="card"><h3>${ms('rule')}ตัดสินทีละรายการ<span class="r" id="ceoProg"></span></h3>${b.items.map(item).join('')}</div>
+      <div id="ceoDone"></div><div class="card"><h3>${ms('rule')}ตัดสินทีละรายการ<span class="r" id="ceoProg"></span></h3>${b.items.map(item).join('')}</div>
     </div><div class="df"><div class="ceosum" id="ceoSum"></div><button class="btn pri block" data-act="ceoApprove" id="ceoOk">${ms('verified')}ยืนยันผลการอนุมัติ</button><button class="btn dout block" data-act="ceoRejectAsk">${ms('block')}ไม่อนุมัติทั้งใบ</button></div>`);
   ceoSum(b);
 }
@@ -2047,6 +2265,7 @@ function ceoSum(b) {
   const S = ceoState(b), ok = b.items.filter((x) => S.dec[x.id] === 'ok'), no = b.items.filter((x) => S.dec[x.id] === 'no'), left = b.items.length - ok.length - no.length;
   const amt = ok.reduce((t, x) => t + x.amount, 0);
   $('#ceoProg').textContent = `ตัดสินแล้ว ${ok.length + no.length}/${b.items.length}`;
+  if ($('#ceoDone')) $('#ceoDone').innerHTML = left ? '' : `<div class="banner good">${ms('task_alt')}<span>ตัดสินครบ ${b.items.length} รายการแล้ว · อนุมัติ ${ok.length}${no.length ? ` · ไม่อนุมัติ ${no.length}` : ''} · ตรวจอีกครั้งแล้วกด <b>ยืนยัน</b> ด้านล่าง</span></div>`;
   $('#ceoSum').innerHTML = `<span>${left ? `<b style="color:var(--warn)">ยังไม่ได้ตัดสิน ${left} รายการ</b>` : `อนุมัติ <b>${ok.length}</b>${no.length ? ` · ไม่อนุมัติ <b>${no.length}</b>` : ''}`}</span><b class="num">${fmt(amt)} บาท</b>`;
   const btn = $('#ceoOk');
   btn.innerHTML = left ? `${ms('pending')}ตัดสินให้ครบทุกรายการก่อน (เหลือ ${left})` : ok.length ? `${ms('verified')}ยืนยันอนุมัติ ${ok.length} รายการ · ${fmt(amt)} บาท` : `${ms('block')}ไม่มีรายการที่อนุมัติ · ใช้ "ไม่อนุมัติทั้งใบ"`;
@@ -2190,9 +2409,16 @@ async function r5Click(a, v, b) {
   if (a === 'ceoView') {
     if (!ST.trv) { await busy(b, async () => { ST.trv = await api('trvList'); }); }
     if (!doc(v)) { toast('ไม่พบใบนี้ · กดโหลดใหม่', 'error'); return true; }
-    const no = ST.openBatch; drawDoc(v); ST.ceoBack = no; addBackBar(no); return true;
+    ceoOpen(v); return true;
   }
-  if (a === 'ceoBack') { const no = ST.ceoBack; ST.ceoBack = null; drawBatch(no); return true; }
+  if (a === 'ceoBack') { ceoBackToBatch(); return true; }
+  if (a === 'ceoNav') { const bt = ST.apv.batches.find((x) => x.no === ST.ceoBack); const L = bt ? ceoNavList(bt) : []; if (L[+v]) ceoOpen(L[+v].ref, true); return true; }
+  if (a === 'ceoDec' || a === 'ceoDecNext') {
+    const bt = ST.apv.batches.find((x) => x.no === ST.ceoBack); if (!bt) return true; const S = ceoState(bt);
+    if (a === 'ceoDec') { S.dec[v] = b.dataset.k; if (b.dataset.k === 'no') { ceoOpen(ST.ceoRef, true); setTimeout(() => $('#cdn')?.focus(), 60); return true; } }
+    else if (!String(S.notes[v] || '').trim()) { need([['#cdn', 'เหตุผลที่ไม่อนุมัติ']]); return true; }
+    ceoAdvance(bt, v); return true;
+  }
   if (a === 'ceoApprove') {
     const bt = ST.apv.batches.find((x) => x.no === ST.openBatch); if (!bt) return true;
     const S = ceoState(bt), left = bt.items.filter((x) => !S.dec[x.id]);
