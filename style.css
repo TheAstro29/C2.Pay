@@ -836,7 +836,10 @@ html.tv-on, html.tv-on body { overflow: hidden; }
 /* ===== ล็อกหน้าจอมือถือ (Safari iOS / Android) ===== */
 html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; touch-action: manipulation; }
 html, body { overflow: hidden; overscroll-behavior: none; }
-body { position: fixed; inset: 0; width: 100%; height: 100%; height: 100dvh; }
+body { position: fixed; inset: 0; width: 100%; height: 100%; }
+/* 100dvh เฉพาะจอสัมผัส (มือถือ) · บน PC ใช้ 100% กันความสูงค้างหลังคีย์บอร์ดบนจอ/ซูม (แถบขาวด้านล่าง) */
+@media (hover: none) and (pointer: coarse) { body { height: 100dvh; } }
+html { background: var(--bg); }
 .view, .db, .printv .pages, .auth, .tvx.narrow, .psh, .ta, #view .tablewrap { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
 .auth { overflow-y: auto; }
 .bnav, .top, .df, .dh, .pbar { touch-action: manipulation; -webkit-user-select: none; user-select: none; }

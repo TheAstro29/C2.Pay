@@ -17,7 +17,16 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const FN = firebase.app().functions('asia-southeast1');
 const TOKEN_KEY = 'c2pay_token';
-const VERSION = 'v1.2';
+const VERSION = 'v1.2.1';
+/** หน้าแอปไม่เลื่อนทั้งหน้า (เลื่อนเฉพาะในกล่อง) — แต่ html/body ที่ overflow:hidden ยังถูกเลื่อนได้จาก focus()/scrollIntoView
+ * หรือคีย์บอร์ดบนจอ (PC จอสัมผัส) ทำให้ทั้งหน้าขยับขึ้นแล้วเห็นแถบขาวด้านล่าง → ดึงกลับที่เดิมทุกครั้ง */
+(function lockPageScroll() {
+  const fix = () => { if (window.scrollX || window.scrollY) window.scrollTo(0, 0); const se = document.scrollingElement; if (se && se.scrollTop) se.scrollTop = 0; if (document.body && document.body.scrollTop) document.body.scrollTop = 0; };
+  window.addEventListener('scroll', fix, { passive: true });
+  document.addEventListener('scroll', (e) => { if (e.target === document || e.target === document.body || e.target === document.documentElement) fix(); }, { capture: true, passive: true });
+  window.addEventListener('resize', fix); document.addEventListener('focusout', () => setTimeout(fix, 60));
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', () => setTimeout(fix, 60));
+})();
 
 // ===== helpers =====
 const $ = (s, r = document) => r.querySelector(s);
