@@ -17,7 +17,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const FN = firebase.app().functions('asia-southeast1');
 const TOKEN_KEY = 'c2pay_token';
-const VERSION = 'v1.1';
+const VERSION = 'v1.2';
 
 // ===== helpers =====
 const $ = (s, r = document) => r.querySelector(s);
@@ -220,7 +220,7 @@ const TITLES = { ceoq: 'รอ CEO อนุมัติ', home: 'ภาพร�
 
 function renderNav() {
   const L = (ST.trv && ST.trv.list) || [];
-  const bd = { inbox: L.filter((d) => d.status === 'submitted' || d.status === 'clearSub' || d.status === 'pending').length, clear: L.filter((d) => d.status === 'open').length, payq: L.filter((d) => !d.batch && (d.status === 'approve' || (d.status === 'topup' && d.settleSrc === 'BANK'))).length };
+  const bd = { inbox: L.filter((d) => d.status === 'submitted' || d.status === 'clearSub' || d.status === 'pending').length, clear: L.filter((d) => d.status === 'open').length, payq: L.filter(waitingPay).length };
   const late = L.some((d) => ['late', 'warn'].includes((clearState(d) || {}).lv));
   const ceoN = ST.apv ? ST.apv.batches.filter((x) => x.status === 'ceo').length : 0;
   const badge = (k) => k === 'more' && isAdmin() && bd.payq ? '<span class="badge"></span>' : k === 'ceoq' && isCeo() && ceoN ? `<span class="badge red">${ceoN}</span>` : isAdmin() && bd[k] ? `<span class="badge ${k === 'inbox' || (k === 'clear' && late) ? 'red' : ''}">${bd[k]}</span>` : k === 'settings' && ST.trialMode && isCust() ? '<span class="badge">ทดลอง</span>' : '';
@@ -265,7 +265,7 @@ const themeBox = () => { const t = getTheme(); return `<div class="thm-seg" role
 function vMore() {
   if (!ST.apv && (isAdmin() || isCeo())) loadApv();
   const me = ST.me, L = (ST.trv && ST.trv.list) || [], A = ST.apv;
-  const waitN = L.filter((d) => !d.batch && (d.status === 'approve' || (d.status === 'topup' && d.settleSrc === 'BANK'))).length;
+  const waitN = L.filter(waitingPay).length;
   const ceoN = A ? A.batches.filter((b) => b.status === 'ceo').length : 0;
   const mon = todayTH().slice(0, 7), paidM = A ? A.batches.filter((b) => b.status === 'paid' && String(b.paidAt || '').slice(0, 7) === mon).length : null;
   const pcb = ST.trv && ST.trv.pcBalance != null ? `คงเหลือ <span class="num">${fmt(ST.trv.pcBalance)}</span>` : 'ยอดคงเหลือ · ตรวจนับ';
@@ -375,7 +375,7 @@ function vGeneral() {
         <div class="fsub full">${ms('ev_station')}รถไฟฟ้า</div>${f('kmPerKwh', 'รถไฟฟ้าวิ่งได้ (กม./kWh)')}${f('evPrice', 'ค่าไฟชาร์จนอกบริษัท (บาท/kWh)', 'แก้ได้ในแต่ละใบ')}
         ${f('evFreeKm', 'แนะนำ "ไม่เบิก" เมื่อรถไฟฟ้าวิ่งไม่เกิน (กม.)', 'ใส่ 0 = ไม่แนะนำ · ผู้ขอเปลี่ยนเองได้')}<div class="fsub full">${ms('payments')}เบี้ยเลี้ยง · ที่พัก · เงินสำรองจ่าย</div>
         ${f('allowance', 'เบี้ยเลี้ยง (บาท/คน/วัน)')}${f('hotel', 'ที่พัก (บาท/ห้อง/คืน)', 'ขอเกินได้รายทริป · Admin อนุมัติ')}
-        ${f('hotelWarn', 'เตือนที่พักเกิน (บาท/ห้อง/คืน)', 'เกินยอดนี้ขึ้นสีแดง')}${f('lowAlert', 'เตือนเงินสำรองจ่ายต่ำกว่า (บาท)')}</div></div>
+        ${f('hotelWarn', 'เตือนที่พักเกิน (บาท/ห้อง/คืน)', 'เกินยอดนี้ขึ้นสีแดง')}${f('lowAlert', 'เตือนเงินสำรองจ่ายต่ำกว่า (บาท)')}${f('topupNoCeo', 'ส่วนต่างหลังเคลียร์ ไม่ต้องเสนอ CEO ถ้าไม่เกิน (บาท/ใบ)', '0 = ทุกยอดต้องผ่าน CEO')}</div></div>
       ${vehCard(D)}
       <div class="card"><h3>${ms('alarm')}กำหนดเคลียร์เงิน (นับจากวันจบทริป)</h3><div class="fgrid">
         ${f('clearDue', 'ครบกำหนด (วัน)', 'เตือนผู้เดินทาง')}${f('clearWarn', 'เตือนซ้ำ (วัน)', 'ขึ้นในรายการใกล้เกินกำหนด')}${f('clearMax', 'เกินกำหนด (วัน)', 'ป้ายแดง · แจ้ง Admin')}</div></div>
@@ -545,6 +545,7 @@ function waitPill(d) {
 function statusPill(d) {
   if (d.tripCancelled && d.status === 'refund') return '<span class="pill p-refund">ยกเลิกทริป · รอคืนเงิน</span>';
   if (d.tripCancelled && d.status === 'closed') return '<span class="pill p-mute">ยกเลิกทริป · คืนเงินแล้ว</span>';
+  if (!d.cancelled && d.payouts && (d.status === 'topup' || d.status === 'refund')) { const n = poLeft(d).length; return `${d.status === 'refund' ? '<span class="pill p-refund">รอคืนเงิน</span>' : ''}${n ? `<span class="pill p-pending">รอจ่ายส่วนต่าง ${n} คน</span>` : ''}`; }
   if (!d.cancelled && (d.status === 'approve' || d.status === 'topup')) return waitPill(d);
   const cs = clearState(d); if (cs && cs.lv !== 'ok' && cs.lv !== 'trip') return `<span class="pill ${cs.cls}">${cs.txt}</span>`;
   if (d.status === 'rejected' && d.cancelled) return '<span class="pill p-mute">ยกเลิก</span>';
@@ -579,8 +580,8 @@ function vDash() {
   const L = ST.trv.list, s = set();
   const sub = L.filter((d) => d.status === 'submitted'), clr = L.filter((d) => d.status === 'clearSub');
   const open = L.filter((d) => d.status === 'open'), late = open.filter((d) => ['late', 'warn'].includes((clearState(d) || {}).lv));
-  const payq = L.filter((d) => d.status === 'approve' || (d.status === 'topup' && d.settleSrc === 'BANK'));
-  const payAmt = payq.reduce((t, d) => t + (d.status === 'approve' ? d.requested : d.diff), 0);
+  const payq = L.filter((d) => !d.cancelled && (d.status === 'approve' || d.status === 'topup' || poLeft(d).length));
+  const payAmt = payq.reduce((t, d) => t + (d.status === 'approve' ? d.requested : topupLeft(d)), 0);
   const kpi = (v, i, lab, val, meta, tone) => `<button class="card kpi ${tone === 'bad' ? 'kbad' : ''}" data-act="go" data-v="${v}"><span class="lab">${ms(i, 'style="font-size:18px"')}${lab}</span><span class="val" ${tone ? `style="color:var(--${tone})"` : ''}>${val}</span><span class="meta">${meta}</span></button>`;
   const lowPc = ST.trv.pcBalance < s.lowAlert;
   return `${trialBanner()}${vHomeNotice()}
@@ -630,7 +631,7 @@ function vClearList() {
   const w = needTrv(); if (w) return w;
   const rank = { late: 0, warn: 1, due: 2, ok: 3, trip: 4 };
   const open = ST.trv.list.filter((d) => d.status === 'open').sort((a, b) => rank[clearState(a).lv] - rank[clearState(b).lv] || a.back.localeCompare(b.back));
-  const clr = ST.trv.list.filter((d) => d.status === 'clearSub'), money = ST.trv.list.filter((d) => d.status === 'refund' || (d.status === 'topup' && d.settleSrc !== 'BANK'));
+  const clr = ST.trv.list.filter((d) => d.status === 'clearSub'), money = ST.trv.list.filter((d) => d.status === 'refund');
   const s = set();
   return `<div class="infob">${ms('info')}<span>เคลียร์ภายใน <b>${s.clearDue}</b> วันหลังจบทริป · เตือนวันที่ <b>${s.clearWarn}</b> · เกิน <b>${s.clearMax}</b> วัน = เกินกำหนด</span></div>
     <div class="grid g2e" style="align-items:start"><div><div class="tgrp"><h3>${ms('pending_actions', 'style="font-size:18px"')}ยังไม่เคลียร์<span class="cnt">${open.length}</span></h3>${open.length ? open.map((d) => docCard(d)).join('') : '<div class="card empty">ไม่มีใบค้างเคลียร์</div>'}</div></div>
@@ -690,7 +691,7 @@ function carText(p, s) {
   if (car === 'ev') return ['ค่าชาร์จรถไฟฟ้า', `${fmt(p.km)} กม. ÷ ${p.kmPer || s.kmPerKwh || 6} × ${p.price}`];
   return ['ค่าน้ำมัน', `${fmt(p.km)} กม. ÷ ${p.kmPer || s.kmPerL} × ${p.price}`];
 }
-const carRow = (p, s) => { const c = carText(p, s); return `<div><span>${c[0]}<br><span class="f">${c[1]}</span></span><b class="${(p.car || 'fuel') === 'none' ? 'zero' : ''}">${fmt(p.fuel)}</b></div>`; };
+const carRow = (p, s) => { const c = carText(p, s); return `<div><span>${c[0]}<br><span class="f">${c[1]}${p.fuelAdj ? `<br><b>ปรับก่อนโอน</b> จาก ${fmt(p.fuelAdj.from)} · ${esc(p.fuelAdj.note)}` : ''}</span></span><b class="${(p.car || 'fuel') === 'none' ? 'zero' : ''}">${fmt(p.fuel)}</b></div>`; };
 function carBox(f, k) {
   const car = f.car || 'fuel', X = !!f.extNo, s = set();
   const vm = (f.veh || {}).mode, vco = vm === 'co' ? ((ST.settings.vehicles || []).find((x) => x.id === f.veh.id) || {}).car || null : null;
@@ -825,7 +826,7 @@ function drawDoc(no) {
   const act = actionsFor(d, lead) + (isCust() && ST.trialMode ? `<div style="border-top:1px dashed var(--line);padding-top:10px"><button class="btn block" style="color:var(--bad);border-color:var(--bad)" data-act="delAsk">${ms('delete_forever')}ลบใบนี้ (โหมดทดลอง)</button><div id="delBox"></div></div>` : '');
   const mapBtn = d.routePts ? `<a class="btn sm" href="${gmLink(d.routePts)}" target="_blank" rel="noopener">${ms('map')}เปิดเส้นทางใน Google Maps</a>` : '';
   const actual = d.actual && !d.tripCancelled ? `<div class="card"><h3>${ms('fact_check')}ผลเคลียร์</h3><div class="lines"><div><span>${p.car === 'ev' ? 'ค่าชาร์จจริง' : p.car === 'none' ? 'น้ำมัน/ชาร์จจริง' : 'น้ำมันจริง'}${fuelNote(d.actual, p) ? `<br><span class="f">${fuelNote(d.actual, p)}</span>` : ''}</span><b>${fmt(d.actual.fuel)}</b></div><div><span>เบี้ยเลี้ยง ${d.actual.people} คน × ${d.actual.days} วัน</span><b>${fmt(d.actual.allowance)}</b></div><div><span>ที่พัก ${d.actual.nights} คืน${d.actual.hotelExcess > 0 ? `<br><span class="f">เกินที่อนุมัติ ${fmt(d.actual.hotelExcess)} · ${d.actual.hotelExApproved ? 'อนุมัติแล้ว' : 'ไม่คืนส่วนนี้'}</span>` : ''}</span><b>${fmt(d.actual.hotel)}</b></div>${(d.actual.extras || []).map((e) => `<div><span>${esc(e.desc)}${e.why ? `<br><span class="f">ไม่มีใบเสร็จ: ${esc(e.why)}</span>` : ''}</span><b>${fmt(e.counted)}</b></div>`).join('')}${addLines(d.actual)}<div class="tot"><span>ใช้จริง</span><b>${fmt(d.actual.total)}</b></div></div>
-      <div class="diffbox ${d.diff < 0 ? 'refund' : d.diff > 0 ? 'topup' : 'even'}" style="margin-top:10px"><span>${d.diff < 0 ? 'ทีมงานคืนเงิน' : d.diff > 0 ? 'บริษัทจ่ายเพิ่ม' : 'พอดี'}</span><b>${fmt(Math.abs(d.diff))} บาท</b></div>
+      ${d.payouts ? payoutsHtml(d) : `<div class="diffbox ${d.diff < 0 ? 'refund' : d.diff > 0 ? 'topup' : 'even'}" style="margin-top:10px"><span>${d.diff < 0 ? 'ทีมงานคืนเงิน' : d.diff > 0 ? 'บริษัทจ่ายเพิ่ม' : 'พอดี'}</span><b>${fmt(Math.abs(d.diff))} บาท</b></div>`}
       ${(d.actual.files || []).length ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">${d.actual.files.map((f, i) => fileBtn(f, `ใบเสร็จ ${i + 1}`)).join('')}</div>` : ''}</div>` : '';
   const pay = d.payment ? `<div class="lines" style="margin-top:6px"><div><span>โอนเมื่อ ${dt(d.payment.date)} · ${esc(d.payment.bank)}${d.payment.batch ? ` · ${esc(d.payment.batch)}` : ''}${d.payment.bankChanged ? ' <span class="pill p-pending">บัญชีเพิ่งเปลี่ยน · ยืนยันแล้ว</span>' : ''}</span>${fileBtn(d.payment.slip, 'สลิป')}</div></div>` : '';
   openDrawer(`<div class="dh"><div><div style="display:flex;gap:8px;align-items:center"><span class="tpill t-TRV">TRV</span>${statusPill(d)}</div><h2 class="num">${d.no}</h2></div><button class="btn sm ghost x" data-act="closeDrawer" aria-label="ปิด">${ms('close')}</button></div>
@@ -866,11 +867,23 @@ function preClearCard(d) {
 }
 /** admin: เลื่อนทริป / ยกเลิกทริป / จ่ายเงินสำรองจ่ายแทนการโอน (ฟอร์มเปิดใน #tripBox) */
 /** รอบ 10: เปลี่ยนช่องทางจ่าย (โอน ⇄ เงินสำรองจ่าย) — ไม่จ่ายทันที ยังต้องผ่านใบเสนอ CEO */
+/** รอบ 11: ส่วนต่างแยกจ่ายรายคน (payouts) */
+function payoutsHtml(d) {
+  const ad = isAdmin();
+  const row = (p) => `<div class="po-row"><span class="po-n"><b>${esc(p.name)}</b><small>${p.staffId === d.staffId ? 'ผู้รับเงิน · ส่วนต่าง' : 'สำรองจ่ายระหว่างทริป'} · ${p.via === 'PC' ? 'เงินสำรองจ่าย' : 'โอน'}</small></span><b class="num">${fmt(p.amount)}</b>
+    ${p.paid ? `<span class="pill p-closed">${p.paid.src === 'PC' ? 'จ่ายแล้ว' : 'โอนแล้ว'} ${dt(p.paid.date)}</span>${p.paid.slip ? fileBtn(p.paid.slip, 'สลิป') : ''}` : p.batch ? `<span class="pill p-pending">อยู่ใน ${esc(p.batch)}</span>` : `<span class="pill p-pending">รอเข้าใบเสนอ</span>`}
+    ${ad && !p.paid ? `<button class="btn sm ghost" data-act="tripAsk" data-v="po:${esc(d.no)}:P:${esc(p.staffId)}">${ms('swap_horiz')}ช่องทาง</button>` : ''}</div>`;
+  return `${d.diff < 0 ? `<div class="diffbox refund" style="margin-top:10px"><span>${esc(d.staffName)} คืนเงิน${d.settle ? ' · รับแล้ว' : ''}</span><b>${fmt(-d.diff)} บาท</b></div>` : ''}
+    <div class="po-box"><b>${ms('payments')}บริษัทจ่ายเพิ่มรายคน</b>${d.payouts.map(row).join('')}</div><div id="tripBox"></div>`;
+}
+const poLeft = (d) => (Array.isArray(d.payouts) ? d.payouts.filter((p) => !p.paid) : []);
+const topupLeft = (d) => (d.payouts ? poLeft(d).reduce((t, p) => t + p.amount, 0) : d.diff || 0);
+const waitingPay = (d) => !d.cancelled && ((d.status === 'approve' && !d.batch) || (d.status === 'topup' && !d.payouts && !d.batch) || poLeft(d).some((p) => !p.batch));
 const docVia = (d) => ((d.status === 'topup' ? d.settleSrc : d.paidFrom) === 'PC' ? 'PC' : 'BANK');
 function payPcInfo(d) {
   const mk = (id, amount, batch, via, ext) => { const to = via === 'PC' ? 'BANK' : 'PC'; return { id, amount, batch, via, to, ext, label: `${ext ? 'เงินต่อทริป: ' : ''}${to === 'PC' ? 'เปลี่ยนเป็นจ่ายเงินสำรองจ่าย' : 'เปลี่ยนเป็นโอนเข้าบัญชี'}` }; };
   if (d.status === 'open' && d.extPay) return mk(d.no + ':EXT', d.extPay.amount, d.extPay.batch, d.extPay.via === 'PC' ? 'PC' : 'BANK', true);
-  if (!d.cancelled && (d.status === 'approve' || d.status === 'topup')) return mk(d.no, d.status === 'topup' ? d.diff : d.requested, d.batch, docVia(d), false);
+  if (!d.cancelled && (d.status === 'approve' || (d.status === 'topup' && !d.payouts))) return mk(d.no, d.status === 'topup' ? d.diff : d.requested, d.batch, docVia(d), false);
   return null;
 }
 function tripTools(d) {
@@ -880,6 +893,17 @@ function tripTools(d) {
   return `<div class="triptools">${canTrip && !d.preClear && !d.extPay ? `<button class="btn" data-act="tripAsk" data-v="post">${ms('event_repeat')}เลื่อนทริป</button>` : ''}${canTrip ? `<button class="btn tcancel" data-act="tripAsk" data-v="cancel">${ms('event_busy')}ยกเลิกทริป</button>` : ''}${pc ? `<button class="btn" data-act="tripAsk" data-v="pc">${ms(pc.to === 'PC' ? 'savings' : 'account_balance')}${pc.label}</button>` : ''}</div><div id="tripBox"></div>`;
 }
 function tripForm(d, kind) {
+  if (kind === 'adj') { const p = d.plan, orig = p.fuelAdj ? p.fuelAdj.from : p.fuel;
+    return `<div class="tform"><b>ปรับยอดก่อนโอน</b><small>แก้ค่าน้ำมันที่จะโอนให้ (เช่น เผื่อขับเข้าที่พัก) · ไม่ต้องใส่ลิตร ไม่ต้องแนบบิล · ทริปยังไม่จบก็ปรับได้</small>
+      <dl class="kv"><dt>ค่าน้ำมันจากระยะทาง</dt><dd class="num">${fmt(orig)}</dd>${p.fuelAdj ? `<dt>ปรับไว้ล่าสุด</dt><dd class="num">${fmt(p.fuel)}</dd>` : ''}<dt>ยอดเบิกตอนนี้</dt><dd class="num"><b>${fmt(d.requested)}</b></dd></dl>
+      <div class="fgrid"><div class="field"><label for="tp-fuel">ค่าน้ำมันที่จะโอน (บาท)</label><input class="inp num" type="number" id="tp-fuel" value="${esc(p.fuel)}" data-base="${d.requested - p.fuel}"></div><div class="field"><label>ยอดใหม่ที่จะโอน</label><div class="inp ro num" id="tp-new">${fmt(d.requested)}</div></div></div>
+      <div class="field"><label for="tp-note">เหตุผล</label><input class="inp" id="tp-note" placeholder="เช่น เผื่อขับเข้าที่พัก ไป-กลับ"></div>
+      ${d.batch ? `<div class="banner warn">${ms('print')}<span>อยู่ในใบเสนอ <b class="num">${esc(d.batch)}</b> ที่รอ CEO เซ็น · ระบบแก้ยอดให้ <b>ต้องพิมพ์ใบเสนอใหม่</b></span></div>` : ''}
+      <div class="banner info">${ms('info')}<span>โอนแล้ว ${esc(d.staffName)} ยังต้อง<b>เคลียร์ตอนจบทริปตามปกติ</b> (ใส่ลิตร + แนบบิล) ใช้ไม่หมดคืนส่วนที่เหลือ</span></div>
+      <button class="btn pri block" data-act="tripGo" data-v="adj">${ms('tune')}ยืนยันปรับยอด</button></div>`; }
+  if (kind && kind.startsWith('po:')) { const p = (d.payouts || []).find((x) => `${d.no}:P:${x.staffId}` === kind.slice(3)) || {};
+    return `<div class="tform"><b>เปลี่ยนช่องทางจ่าย · ${esc(p.name)} ${fmt(p.amount)}</b><div class="field"><label for="tp-via">ช่องทาง</label><select class="sel" id="tp-via"><option value="BANK" ${p.via !== 'PC' ? 'selected' : ''}>โอนเข้าบัญชี</option><option value="PC" ${p.via === 'PC' ? 'selected' : ''}>เงินสำรองจ่าย (admin จ่ายเงินสด)</option></select></div>
+      <div class="field"><label for="tp-note">หมายเหตุ (ถ้ามี)</label><input class="inp" id="tp-note"></div><button class="btn pri block" data-act="tripGo" data-v="${esc(kind)}">${ms('swap_horiz')}บันทึก</button></div>`; }
   if (kind === 'post') return `<div class="tform"><b>เลื่อนทริป</b><small>เดิม ${dRange(d.go, d.back)} (${d.plan.days} วัน) · จำนวนวันเท่าเดิม ยอดเท่าเดิม ไม่ต้องเสนอ CEO ใหม่</small>
     <div class="fgrid"><div class="field"><label for="tp-go">ไปวันที่ใหม่</label><input class="inp" type="date" id="tp-go" min="${todayTH()}" value="${d.go >= todayTH() ? d.go : todayTH()}" data-back-of="${d.go}|${d.back}"></div><div class="field"><label>กลับ (คำนวณให้)</label><div class="inp ro" id="tp-back">${dt(d.back)}</div></div></div>
     <div class="field"><label for="tp-note">เหตุผล</label><input class="inp" id="tp-note" placeholder="เช่น ลูกค้าขอเลื่อนติดตั้ง"></div>
@@ -900,10 +924,13 @@ function tripForm(d, kind) {
     <div class="field"><label for="tp-note">หมายเหตุ (ถ้ามี)</label><input class="inp" id="tp-note" placeholder="เช่น ต้องออกเดินทางพรุ่งนี้เช้า"></div>
     <button class="btn pri block" data-act="tripGo" data-v="pc">${ms(pc.to === 'PC' ? 'savings' : 'account_balance')}ยืนยัน${pc.label.replace(/^เงินต่อทริป: /, '')}</button></div>`;
 }
-document.addEventListener('input', (e) => { if (e.target.id !== 'tp-go') return; const [g, bk] = (e.target.dataset.backOf || '').split('|'); const v = e.target.value; if (!v || !g) return; $('#tp-back').textContent = dt(addDays(bk, Math.round((Date.parse(v) - Date.parse(g)) / 864e5))); });
+document.addEventListener('input', (e) => { if (e.target.id === 'tp-fuel') { const n = $('#tp-new'); if (n) n.textContent = fmt((Number(e.target.dataset.base) || 0) + (Number(e.target.value) || 0)); return; } if (e.target.id !== 'tp-go') return; const [g, bk] = (e.target.dataset.backOf || '').split('|'); const v = e.target.value; if (!v || !g) return; $('#tp-back').textContent = dt(addDays(bk, Math.round((Date.parse(v) - Date.parse(g)) / 864e5))); });
 /** ปุ่มเคลียร์ก่อนโอน (admin): ใบเดินทางอนุมัติแล้ว ยังไม่โอน ทริปจบแล้ว และใบเสนอยังไม่ผ่าน CEO */
+/** รอบ 11: "ปรับยอดก่อนโอน" แทน "เคลียร์ก่อนโอน" (ใบที่เคลียร์ก่อนโอนแบบเดิมไว้แล้ว ยังแก้ผลได้) */
 function preClearBtn(d) {
-  if ((d.type || 'TRV') !== 'TRV' || d.status !== 'approve' || d.cancelled || String(d.back) > todayTH()) return '';
+  if ((d.type || 'TRV') !== 'TRV' || d.status !== 'approve' || d.cancelled) return '';
+  if (!d.preClear) return d.batch && d.batchStage && d.batchStage !== 'ceo' ? `<p class="formula" style="margin:0">${ms('lock', 'style="font-size:15px;vertical-align:-3px"')} ใบเสนอ ${esc(d.batch)} ผ่าน CEO แล้ว ปรับยอดไม่ได้</p>` : `<button class="btn block" data-act="tripAsk" data-v="adj">${ms('tune')}ปรับยอดก่อนโอน${d.adjusts && d.adjusts.length ? ` (ปรับแล้ว ${d.adjusts.length} ครั้ง)` : ''}</button>`;
+  if (String(d.back) > todayTH()) return '';
   if (d.batch && d.batchStage && d.batchStage !== 'ceo') return d.preClear ? '' : `<p class="formula" style="margin:0">${ms('lock', 'style="font-size:15px;vertical-align:-3px"')} ใบเสนอ ${esc(d.batch)} ผ่าน CEO แล้ว แก้ยอดไม่ได้ · ถ้าใช้จริงไม่ตรง ให้เคลียร์หลังโอนแบบเดิม</p>`;
   return `<button class="btn pri block" data-act="openPreClr" data-v="${d.no}">${ms('receipt_long')}${d.preClear ? 'แก้ผลเคลียร์ก่อนโอน' : 'เคลียร์ก่อนโอน'}</button>`;
 }
@@ -922,8 +949,9 @@ function actionsFor(d, lead) {
     if (d.status === 'open') return `<button class="btn block" data-act="openExt" data-v="${d.no}">${ms('add_location_alt')}ต่อทริป / เพิ่มสถานที่</button><button class="btn block" data-act="openClr" data-v="${d.no}">${ms('fact_check')}เคลียร์แทนทีมงาน</button>${tripTools(d)}`;
     if (d.status === 'clearSub') return `<button class="btn pri block" data-act="openClr" data-v="${d.no}">${ms('fact_check')}ตรวจผลเคลียร์</button>`;
     if (d.status === 'refund') return `<p class="formula" style="margin:0">รอ ${esc(d.staffName)} คืนเงิน <b>${fmt(-d.diff)}</b> บาท</p><div class="srcpick"><label><input type="radio" name="rhow" value="PC" checked> รับเงินสด (เข้าเงินสำรองจ่าย)</label><label><input type="radio" name="rhow" value="BANK"> โอนคืนเข้าบัญชี</label></div>
-      <div class="field" id="rslipBox" hidden><label for="r-slip">สลิปที่ทีมงานโอนคืน</label><input class="inp" type="file" id="r-slip" accept="image/*,application/pdf" style="padding-top:6px"></div><button class="btn pri block" data-act="refundOk">${ms('task_alt')}รับเงินคืนแล้ว · ปิดใบ</button>`;
-    if (d.status === 'topup' && d.settleSrc === 'BANK') return `<button class="btn pri block" data-act="go" data-v="payq">${ms('approval')}ไปที่ขออนุมัติโอน (ส่วนต่าง ${fmt(d.diff)})</button>${tripTools(d)}`;
+      <div class="field" id="rslipBox" hidden><label for="r-slip">สลิปที่ทีมงานโอนคืน</label><input class="inp" type="file" id="r-slip" accept="image/*,application/pdf" style="padding-top:6px"></div><button class="btn pri block" data-act="refundOk">${ms('task_alt')}รับเงินคืนแล้ว${poLeft(d).length ? '' : ' · ปิดใบ'}</button>`;
+    if (d.status === 'topup' && d.payouts) return `<button class="btn pri block" data-act="go" data-v="payq">${ms('approval')}ไปที่ขออนุมัติโอน (ส่วนต่าง ${poLeft(d).length} คน · ${fmt(topupLeft(d))})</button>`;
+    if (d.status === 'topup') return `<button class="btn pri block" data-act="go" data-v="payq">${ms('approval')}ไปที่ขออนุมัติโอน (ส่วนต่าง ${fmt(d.diff)})</button>${tripTools(d)}`;
     return '';
   }
   if (!lead) return isCeo() ? '' : `<p class="formula" style="margin:0">${ms('visibility', 'style="font-size:16px;vertical-align:-3px"')} คุณร่วมเดินทางในทริปนี้ · ผู้รับเงินคือ ${esc(d.staffName)}</p>`;
@@ -953,10 +981,16 @@ const fileIn = (has, id, data, label) => has ? `<label class="btn sm ghost fchg"
 const fuelNote = (a, p) => a && a.fuels && a.fuels.length ? `${a.fuels.length} รายการ${p && p.car !== 'ev' ? ` · ${fmt(a.fuels.reduce((t, f) => t + (Number(f.qty) || 0), 0))} ลิตร` : ''}` : '';
 const addLines = (a) => (a.adds || []).map((e) => `<div><span>${esc(e.desc)} <span class="pill ${e.ok ? 'p-paid' : 'p-mute'}">ซื้อเพิ่ม${e.ok ? '' : ' · ไม่อนุมัติ'}</span>${e.why ? `<br><span class="f">ไม่มีใบเสร็จ: ${esc(e.why)}</span>` : ''}</span><b class="${e.ok ? '' : 'zero'}">${e.ok ? fmt(e.amount) : `<s>${fmt(e.amount)}</s>`}</b></div>`).join('');
 /** รอบ 10: ค่าน้ำมัน/ค่าชาร์จเป็นรายการ — วันที่ · ลิตร (kWh) · บาท · สลิปของแต่ละรายการ */
+/** รอบ 11: เลือกว่าใครสำรองจ่ายรายการนี้ (แสดงเฉพาะทริปที่มีหลายคน) */
+function whoSel(d, kind, i, cur) {
+  const T = (d && d.travelers) || []; if (T.length < 2) return '';
+  const v = cur && T.some((t) => t.id === cur) ? cur : d.staffId;
+  return `<label class="who" for="by-${kind}-${i}">${ms('person', 'style="font-size:17px"')}<span>คนจ่าย</span><select class="sel" id="by-${kind}-${i}" data-by="${kind}:${i}">${T.map((t) => `<option value="${esc(t.id)}" ${t.id === v ? 'selected' : ''}>${esc(t.name)}${t.id === d.staffId ? ' (ผู้รับเงิน)' : ''}</option>`).join('')}</select></label>`;
+}
 function fuelsHtml(d, k, r) {
   const ev = d.plan.car === 'ev', none = d.plan.car === 'none', lo = addDays(d.go, -1), unit = ev ? 'kWh' : 'ลิตร';
   const row = (f, i) => `<div class="furow"><div class="fug"><input class="inp" type="date" id="fu-d-${i}" data-fu="${i}:date" value="${esc(f.date)}" min="${lo}" max="${d.back}" aria-label="วันที่เติม รายการ ${i + 1}"><input class="inp num" type="number" step="0.01" id="fu-q-${i}" data-fu="${i}:qty" value="${esc(f.qty)}" placeholder="${unit}${ev || none ? ' (ถ้ามี)' : ''}" aria-label="${unit} รายการ ${i + 1}"><input class="inp num" type="number" id="fu-a-${i}" data-fu="${i}:amount" value="${esc(f.amount)}" placeholder="บาท" aria-label="ยอดเงิน รายการ ${i + 1}"><button class="xbtn" data-act="fuDel" data-v="${i}" aria-label="ลบรายการ ${i + 1}">${ms('close', 'style="font-size:18px"')}</button></div>
-    <div class="rc">${f.file ? `<span class="hint">${ms('check_circle', 'style="font-size:15px;vertical-align:-3px;color:var(--good)"')} สลิปแนบแล้ว ${fileBtn(f.file, 'ดู')}</span>` : `<label class="ckl"><input type="checkbox" id="fu-n-${i}" data-fun="${i}" ${f.noRcpt ? 'checked' : ''}> ไม่มีสลิป</label>${f.noRcpt ? `<input class="inp" id="fu-w-${i}" data-fu="${i}:why" value="${esc(f.why)}" placeholder="เหตุผลที่ไม่มีสลิป *">` : ''}`}${fileIn(f.file, `fu-f-${i}`, `data-fuf="${i}"`, `สลิป รายการ ${i + 1}`)}</div></div>`;
+    ${whoSel(d, 'fu', i, f.by)}<div class="rc">${f.file ? `<span class="hint">${ms('check_circle', 'style="font-size:15px;vertical-align:-3px;color:var(--good)"')} สลิปแนบแล้ว ${fileBtn(f.file, 'ดู')}</span>` : `<label class="ckl"><input type="checkbox" id="fu-n-${i}" data-fun="${i}" ${f.noRcpt ? 'checked' : ''}> ไม่มีสลิป</label>${f.noRcpt ? `<input class="inp" id="fu-w-${i}" data-fu="${i}:why" value="${esc(f.why)}" placeholder="เหตุผลที่ไม่มีสลิป *">` : ''}`}${fileIn(f.file, `fu-f-${i}`, `data-fuf="${i}"`, `สลิป รายการ ${i + 1}`)}</div></div>`;
   return `<div class="field full"><label>${ev ? 'ค่าชาร์จรถไฟฟ้า' : none ? 'ค่าน้ำมัน/ค่าชาร์จที่จ่ายจริง (ถ้ามี)' : 'ค่าน้ำมัน'} · แนบสลิปทุกรายการ · รวม <b class="num">${fmt(r.fuel)}</b> บาท</label><div class="items">${k.fuels.length ? `<div class="fug fuh" aria-hidden="true"><span>วันที่เติม</span><span>${unit}</span><span>บาท</span><span></span></div>` : ''}${k.fuels.map(row).join('') || '<span class="hint">ไม่มีรายการ = ไม่ได้จ่ายค่า' + (ev ? 'ชาร์จ' : 'น้ำมัน') + '</span>'}
     <button class="btn sm" style="align-self:flex-start" data-act="fuAdd">${ms('add')}เพิ่มรายการ${ev ? 'ชาร์จ' : 'เติมน้ำมัน'}</button></div></div>`;
 }
@@ -964,7 +998,7 @@ function fuelsHtml(d, k, r) {
 function addsHtml(k, adminRev) {
   const A = k.add || [], C = ST.settings.cats || ['อื่นๆ'];
   const row = (a, i) => `<div class="exrow addrow">${adminRev ? `<label class="ckl excheck" style="margin:0"><input type="checkbox" id="ad-o-${i}" data-ado="${i}" ${a.ok ? 'checked' : ''}> อนุมัติรายการนี้ <b class="num">${fmt(Number(a.amount) || 0)}</b> บาท</label>` : ''}
-    <div class="exl"><select class="sel" id="ad-c-${i}" data-ad="${i}:cat" aria-label="หมวด รายการ ${i + 1}">${C.map((c) => `<option ${c === a.cat ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select><input class="inp" id="ad-d-${i}" data-ad="${i}:desc" value="${esc(a.desc)}" placeholder="รายละเอียด เช่น สายไฟติดตั้งหน้างาน"><input class="inp num" type="number" id="ad-a-${i}" data-ad="${i}:amount" value="${esc(a.amount)}" placeholder="บาท"><button class="xbtn" data-act="adDel" data-v="${i}" aria-label="ลบรายการ ${i + 1}">${ms('close', 'style="font-size:18px"')}</button></div>
+    <div class="exl"><select class="sel" id="ad-c-${i}" data-ad="${i}:cat" aria-label="หมวด รายการ ${i + 1}">${C.map((c) => `<option ${c === a.cat ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select><input class="inp" id="ad-d-${i}" data-ad="${i}:desc" value="${esc(a.desc)}" placeholder="รายละเอียด เช่น สายไฟติดตั้งหน้างาน"><input class="inp num" type="number" id="ad-a-${i}" data-ad="${i}:amount" value="${esc(a.amount)}" placeholder="บาท"><button class="xbtn" data-act="adDel" data-v="${i}" aria-label="ลบรายการ ${i + 1}">${ms('close', 'style="font-size:18px"')}</button></div>${whoSel(doc(ST.clrNo), 'ad', i, a.by)}
     <div class="rc">${a.file ? `<span class="hint">${ms('check_circle', 'style="font-size:15px;vertical-align:-3px;color:var(--good)"')} แนบแล้ว ${fileBtn(a.file, 'ดู')}</span>` : `<label class="ckl"><input type="checkbox" id="ad-n-${i}" data-adn="${i}" ${a.noRcpt ? 'checked' : ''}> ไม่มีใบเสร็จ</label>${a.noRcpt ? `<input class="inp" id="ad-w-${i}" data-ad="${i}:why" value="${esc(a.why)}" placeholder="เหตุผลที่ไม่มีใบเสร็จ *">` : ''}`}${fileIn(a.file, `ad-f-${i}`, `data-adf="${i}"`, `สลิป รายการซื้อเพิ่ม ${i + 1}`)}</div></div>`;
   return `<div class="field full"><label>ซื้อเพิ่มระหว่างทาง (ไม่ได้ขอไว้ตอนเบิก)${adminRev ? ' · ติ๊กอนุมัติทีละรายการ ไม่ติ๊ก = ไม่จ่าย' : ' · รอ admin อนุมัติ'}</label><div class="items">${A.map(row).join('')}
     <button class="btn sm" style="align-self:flex-start" data-act="adAdd">${ms('add_shopping_cart')}เพิ่มค่าใช้จ่าย</button></div></div>`;
@@ -984,12 +1018,15 @@ function clrFromPre(d) {
 function clrCalc(d, k) {
   const s = set(), p = d.plan, allowance = (Number(k.people) || 0) * (Number(k.days) || 0) * s.allowance, cap = (p.rooms || 1) * (p.rate || s.hotel);
   const m = new Map(); let err = '';
-  k.stays.forEach((st) => { if (!st.from || !st.to || st.to < st.from) { err = 'วันที่ที่พักไม่ถูกต้อง'; return; } if (st.from < d.go || st.to > d.back) { err = 'วันที่ที่พักต้องอยู่ในช่วงทริป'; return; } if (st.rate === '' || st.rate == null) { err = 'ใส่ราคาที่พักให้ครบทุกช่วง'; return; } for (let i = 0; i <= dayDiff(st.from, st.to); i++) { const x = addDays(st.from, i); if (m.has(x)) err = 'ช่วงวันที่ที่พักซ้ำกัน'; m.set(x, Number(st.rate) || 0); } });
+  k.stays.forEach((st) => { if (!st.from || !st.to || st.to < st.from) { err = 'วันที่ที่พักไม่ถูกต้อง'; return; } if (st.from < d.go || st.to > d.back) { err = 'วันที่ที่พักต้องอยู่ในช่วงทริป'; return; } if (st.rate === '' || st.rate == null) { err = 'ใส่ราคาที่พักให้ครบทุกช่วง'; return; } for (let i = 0; i <= dayDiff(st.from, st.to); i++) { const x = addDays(st.from, i); m.set(x, (m.get(x) || 0) + (Number(st.rate) || 0)); } });
+  // รอบ 11: วันซ้ำได้ (พักหลายห้อง) · ช่วงที่ครอบคืนที่รวมแล้วเกินเพดาน ต้องมีเหตุผล+ใบเสร็จ
+  const nightsOf = (st) => (st.from && st.to && st.to >= st.from ? Array.from({ length: dayDiff(st.from, st.to) + 1 }, (_, i) => addDays(st.from, i)) : []);
+  const stayOver = k.stays.map((st) => Number(st.rate) > cap || nightsOf(st).some((x) => (m.get(x) || 0) > cap));
   const nights = [...m.values()], hotelClaim = nights.reduce((t, a) => t + a, 0), hotelCap = nights.reduce((t, a) => t + Math.min(a, cap), 0), hotelExcess = hotelClaim - hotelCap;
   // staff เห็นยอดคาดการณ์ (นับทุกอย่าง · ส่วนเกิน/ซื้อเพิ่ม รอ admin) · admin นับตามที่ติ๊ก
   const proj = !isAdmin();
   const hotel = proj || k.hotelEx ? hotelClaim : hotelCap;
-  if (!err && k.stays.some((st) => Number(st.rate) > cap && (!String(st.why || '').trim() || !st.file))) err = `ที่พักเกินเกณฑ์ ${fmt(cap)} บาท/คืน · ใส่เหตุผลและแนบใบเสร็จที่พักของช่วงนั้น`;
+  if (!err && k.stays.some((st, i) => stayOver[i] && (!String(st.why || '').trim() || !st.file))) err = `ที่พักเกินเกณฑ์ ${fmt(cap)} บาท/คืน · ใส่เหตุผลและแนบใบเสร็จที่พักของช่วงนั้น`;
   const ex = (p.extras || []).map((e, i) => { const r = k.ex[i] || {}, act = Number(r.amount) || 0; return { ...e, actual: act, counted: proj || k.exOver ? act : Math.min(act, e.amount), filled: r.amount !== '' && r.amount != null, ok: !!r.file || (r.noRcpt && String(r.why || '').trim()) }; });
   const extras = ex.reduce((t, e) => t + e.counted, 0), exOver = ex.reduce((t, e) => t + Math.max(0, e.actual - e.amount), 0);
   if (!err && ex.some((e) => !e.filled)) err = 'ใส่ยอดจริงของค่าใช้จ่ายอื่นให้ครบ';
@@ -1008,22 +1045,30 @@ function clrCalc(d, k) {
   const addClaim = adds.reduce((t, a) => t + (Number(a.amount) || 0), 0), addTotal = proj ? addClaim : adds.reduce((t, a) => t + (a.ok ? Number(a.amount) || 0 : 0), 0);
   const pending = proj ? hotelExcess + exOver + addClaim : 0;
   const total = fuel + allowance + hotel + extras + addTotal;
-  return { allowance, fuel, nights: nights.length, hotelClaim, hotelExcess, hotel, cap, ex, extras, exOver, addClaim, addTotal, pending, proj, total, err };
+  // รอบ 11: ใครสำรองจ่าย (ทริปหลายคน) — แบ่งเหมือน backend · เบี้ยเลี้ยง/ไม่ระบุ = ผู้รับเงิน
+  const ids = new Set((d.travelers || []).map((t) => t.id)), who = (x) => (x && ids.has(x) ? x : d.staffId), paid = {};
+  const put = (x, a) => { const w = who(x); paid[w] = (paid[w] || 0) + (Number(a) || 0); };
+  if (k.fuels) k.fuels.forEach((f) => put(f.by, f.amount)); else put('', fuel);
+  k.stays.forEach((st) => { const rate = Number(st.rate) || 0; put(st.by, nightsOf(st).reduce((t, x) => { const tot = m.get(x) || rate; return t + (proj || k.hotelEx || tot <= cap ? rate : rate * cap / tot); }, 0)); });
+  ex.forEach((e, i) => put((k.ex[i] || {}).by, e.counted)); adds.forEach((a) => { if (proj || a.ok) put(a.by, a.amount); }); put('', allowance);
+  const others = Object.keys(paid).filter((id) => id !== d.staffId && paid[id] > 0).map((id) => ({ staffId: id, name: ((d.travelers || []).find((t) => t.id === id) || {}).name || '', amount: Math.round(paid[id] * 100) / 100 }));
+  const othersAmt = others.reduce((t, o) => t + o.amount, 0);
+  return { allowance, fuel, nights: nights.length, hotelClaim, hotelExcess, hotel, cap, ex, extras, exOver, addClaim, addTotal, pending, proj, total, err, stayOver, others, othersAmt };
 }
 function vClr() {
   const pre = !!ST.clrPre && isAdmin(); const d = doc(ST.clrNo); if (!d || !(d.status === 'open' || (isAdmin() && d.status === 'clearSub') || (pre && d.status === 'approve')) || (!isAdmin() && d.staffId !== ST.me.id)) { ST.view = isAdmin() ? 'clear' : 'home'; return isAdmin() ? vClearList() : vMyTrips(); }
-  const k = ST.clr || (ST.clr = newClr(d)); const r = clrCalc(d, k), diff = r.total - d.requested, s = set();
+  const k = ST.clr || (ST.clr = newClr(d)); const r = clrCalc(d, k), diff = r.total - r.othersAmt - d.requested, s = set();
   const adminRev = isAdmin();
-  const stays = `<div class="field full"><label>ที่พัก (ตามจริง · กรอกเป็นช่วงวันที่) · อนุมัติไว้ ${fmt(d.plan.rate)} × ${d.plan.rooms} ห้อง/คืน</label><div class="items">${k.stays.map((st, i) => `<div class="stay"><div class="sd"><input class="inp" type="date" id="st-f-${i}" data-st="${i}:from" value="${st.from}" min="${d.go}" max="${d.back}" aria-label="ตั้งแต่"><span>ถึง</span><input class="inp" type="date" id="st-t-${i}" data-st="${i}:to" value="${st.to}" min="${d.go}" max="${d.back}" aria-label="ถึง"></div><div class="sr"><input class="inp num" type="number" id="st-r-${i}" data-st="${i}:rate" value="${esc(st.rate)}" placeholder="บาท/คืน" aria-label="ราคาต่อคืน"><button class="xbtn" data-act="stayDel" data-v="${i}" aria-label="ลบช่วง">${ms('close', 'style="font-size:18px"')}</button></div><div class="stover" id="st-ov-${i}" data-cap="${r.cap}" ${Number(st.rate) > r.cap ? '' : 'hidden'}><div class="banner warn">${ms('hotel')}<span>เกินเกณฑ์ ${fmt(r.cap)} บาท/คืน · <b>ใส่เหตุผลและแนบใบเสร็จ</b> admin เป็นผู้ตัดสินส่วนเกิน</span></div><input class="inp" id="st-w-${i}" data-st="${i}:why" value="${esc(st.why || '')}" placeholder="เหตุผลที่เกิน * เช่น โรงแรมใกล้หน้างานเต็ม"><div class="rc">${st.file ? `<span class="hint">${ms('check_circle', 'style="font-size:15px;vertical-align:-3px;color:var(--good)"')} ใบเสร็จที่พัก ${fileBtn(st.file, 'ดู')}</span>` : ''}${fileIn(st.file, `st-file-${i}`, `data-stf="${i}"`, `ใบเสร็จที่พัก ช่วงที่ ${i + 1}`)}</div></div></div>`).join('')}
+  const stays = `<div class="field full"><label>ที่พัก (ตามจริง · กรอกเป็นช่วงวันที่) · อนุมัติไว้ ${fmt(d.plan.rate)} × ${d.plan.rooms} ห้อง/คืน</label><div class="items">${k.stays.map((st, i) => `<div class="stay"><div class="sd"><input class="inp" type="date" id="st-f-${i}" data-st="${i}:from" value="${st.from}" min="${d.go}" max="${d.back}" aria-label="ตั้งแต่"><span>ถึง</span><input class="inp" type="date" id="st-t-${i}" data-st="${i}:to" value="${st.to}" min="${d.go}" max="${d.back}" aria-label="ถึง"></div><div class="sr"><input class="inp num" type="number" id="st-r-${i}" data-st="${i}:rate" value="${esc(st.rate)}" placeholder="บาท/คืน" aria-label="ราคาต่อคืน"><button class="xbtn" data-act="stayDel" data-v="${i}" aria-label="ลบช่วง">${ms('close', 'style="font-size:18px"')}</button></div>${whoSel(d, 'st', i, st.by)}<div class="stover" id="st-ov-${i}" ${r.stayOver[i] ? '' : 'hidden'}><div class="banner warn">${ms('hotel')}<span>ค่าที่พักต่อคืน (รวมทุกห้องในคืนเดียวกัน) เกินเกณฑ์ ${fmt(r.cap)} บาท · <b>ใส่เหตุผลและแนบใบเสร็จ</b> admin เป็นผู้ตัดสินส่วนเกิน</span></div><input class="inp" id="st-w-${i}" data-st="${i}:why" value="${esc(st.why || '')}" placeholder="เหตุผลที่เกิน * เช่น โรงแรมใกล้หน้างานเต็ม"><div class="rc">${st.file ? `<span class="hint">${ms('check_circle', 'style="font-size:15px;vertical-align:-3px;color:var(--good)"')} ใบเสร็จที่พัก ${fileBtn(st.file, 'ดู')}</span>` : ''}${fileIn(st.file, `st-file-${i}`, `data-stf="${i}"`, `ใบเสร็จที่พัก ช่วงที่ ${i + 1}`)}</div></div></div>`).join('')}
       <button class="btn sm" style="align-self:flex-start" data-act="stayAdd">${ms('add')}เพิ่มช่วงที่พัก</button></div>
       ${r.hotelExcess > 0 ? (adminRev ? `<label class="ckl excheck"><input type="checkbox" id="c-hex" data-cchk="hotelEx" ${k.hotelEx ? 'checked' : ''}> อนุมัติส่วนเกินที่พัก <b>${fmt(r.hotelExcess)}</b> บาท (เอาติ๊กออก = จ่ายไม่เกิน ${fmt(r.cap)}/คืน)</label>` : `<div class="banner info" style="margin-top:8px">${ms('hotel')}<span>นับยอดที่พักเต็มตามจริงแล้ว · ส่วนเกิน <b>${fmt(r.hotelExcess)}</b> บาท รอ admin อนุมัติ</span></div>`) : ''}</div>`;
   const ex = r.ex.length ? `<div class="field full"><label>ค่าใช้จ่ายอื่นที่ขอไว้ · ใส่ยอดจริงและแนบใบเสร็จทุกรายการ</label><div class="items">${r.ex.map((e, i) => { const x = k.ex[i];
-      return `<div class="exrow clr"><div class="exh"><b>${esc(e.desc)}</b><span>${esc(e.cat)} · ขอไว้ ${fmt(e.amount)}</span></div><div class="exl"><input class="inp num" type="number" id="xc-a-${i}" data-xc="${i}:amount" value="${esc(x.amount)}" placeholder="ยอดจริง (บาท)"><input class="inp" type="file" id="xc-f-${i}" data-xcf="${i}" accept="image/*,application/pdf" style="padding-top:6px" aria-label="ใบเสร็จ ${esc(e.desc)}"></div>
+      return `<div class="exrow clr"><div class="exh"><b>${esc(e.desc)}</b><span>${esc(e.cat)} · ขอไว้ ${fmt(e.amount)}</span></div><div class="exl"><input class="inp num" type="number" id="xc-a-${i}" data-xc="${i}:amount" value="${esc(x.amount)}" placeholder="ยอดจริง (บาท)"><input class="inp" type="file" id="xc-f-${i}" data-xcf="${i}" accept="image/*,application/pdf" style="padding-top:6px" aria-label="ใบเสร็จ ${esc(e.desc)}"></div>${whoSel(d, 'xc', i, x.by)}
         ${x.file ? `<span class="hint">${ms('check_circle', 'style="font-size:15px;vertical-align:-3px;color:var(--good)"')} แนบแล้ว ${fileBtn(x.file, 'ดู')}</span>` : `<label class="ckl"><input type="checkbox" id="xc-n-${i}" data-xcn="${i}" ${x.noRcpt ? 'checked' : ''}> ไม่มีใบเสร็จ</label>${x.noRcpt ? `<input class="inp" id="xc-w-${i}" data-xc="${i}:why" value="${esc(x.why)}" placeholder="เหตุผลที่ไม่มีใบเสร็จ * (admin ยืนยัน)">` : ''}`}
         ${e.actual > e.amount ? `<span class="overtag bad">ใช้เกินที่ขอ ${fmt(e.actual - e.amount)} บาท</span>` : ''}</div>`; }).join('')}</div>
       ${r.exOver > 0 && adminRev ? `<label class="ckl excheck"><input type="checkbox" id="c-exo" data-cchk="exOver" ${k.exOver ? 'checked' : ''}> อนุมัติค่าใช้จ่ายอื่นที่เกินที่ขอ <b>${fmt(r.exOver)}</b> บาท</label>` : ''}</div>` : '';
   const files = `<div class="field full"><label for="c-files">ไฟล์แนบอื่น (ถ้ามี)</label><input class="inp" type="file" id="c-files" accept="image/*,application/pdf" multiple style="padding-top:6px"><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${k.files.map((f, i) => `<span class="chip">${fileBtn(f, `ใบเสร็จ ${i + 1}`)}<button class="btn sm ghost" style="height:20px;padding:0 2px" data-act="fileDel" data-v="${i}" aria-label="เอาไฟล์ออก">${ms('close', 'style="font-size:16px"')}</button></span>`).join('') || '<span class="hint">ยังไม่แนบ</span>'}</div></div>`;
-  const topSrc = adminRev && !pre && diff > 0 && !r.err ? `<div class="srcpick" style="margin-bottom:8px"><label><input type="radio" name="tsrc" value="PC" ${k.src === 'PC' ? 'checked' : ''}> จ่ายส่วนต่างเงินสำรองจ่าย<br><small style="color:var(--sub)">เหลือ ${fmt(ST.trv.pcBalance)}</small></label><label><input type="radio" name="tsrc" value="BANK" ${k.src === 'BANK' ? 'checked' : ''}> โอนส่วนต่าง</label></div><p class="formula" style="margin:-2px 0 8px">ส่วนต่างเข้าใบเสนอ CEO ก่อนทุกช่องทาง</p>` : '';
+  const topSrc = adminRev && !pre && (diff > 0 || r.others.length) && !r.err ? `<div class="srcpick" style="margin-bottom:8px"><label><input type="radio" name="tsrc" value="PC" ${k.src === 'PC' ? 'checked' : ''}> จ่ายส่วนต่างเงินสำรองจ่าย<br><small style="color:var(--sub)">เหลือ ${fmt(ST.trv.pcBalance)}</small></label><label><input type="radio" name="tsrc" value="BANK" ${k.src === 'BANK' ? 'checked' : ''}> โอนส่วนต่าง</label></div><p class="formula" style="margin:-2px 0 8px">ส่วนต่างเข้าใบเสนอ CEO ก่อนทุกช่องทาง</p>` : '';
   return `<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap"><button class="btn sm ghost" data-act="go" data-v="${isAdmin() ? 'clear' : 'home'}">${ms('arrow_back')}${isAdmin() ? 'เคลียร์เงิน' : 'ทริปของฉัน'}</button><span class="tpill t-TRV">TRV</span><b class="num">${d.no}</b><span style="color:var(--sub)">${esc(d.staffName)} · ${esc(d.title)} · ${dRange(d.go, d.back)}</span></div>
     ${pre ? `<div class="banner info" style="margin-bottom:12px">${ms('receipt_long')}<span><b>เคลียร์ก่อนโอน</b> · ทริปจบแล้วแต่ยังไม่ได้โอน ใส่ยอดที่ ${esc(d.staffName)} สำรองจ่ายจริง · ระบบจะโอนตามยอดจริงและปิดใบทันทีเมื่อโอนเสร็จ</span></div>` : ''}
     ${adminRev && d.status === 'clearSub' ? `<div class="banner info" style="margin-bottom:12px">${ms('inbox')}<span><b>${esc(d.clearSub.byName)}</b> ส่งเคลียร์เมื่อ ${dtTime(d.clearSub.at)} · ตรวจตัวเลขกับใบเสร็จ แก้ได้ แล้วกดยืนยัน${d.clearSub.note ? `<br>หมายเหตุ: ${esc(d.clearSub.note)}` : ''}</span></div>` : ''}
@@ -1040,9 +1085,10 @@ function vClr() {
       <div><span>ที่พัก ${r.nights} คืน${r.hotelExcess > 0 ? `<br><span class="f">${r.proj ? `รอ admin ตัดสินส่วนเกิน ${fmt(r.hotelExcess)}` : k.hotelEx ? `รวมส่วนเกิน ${fmt(r.hotelExcess)} ที่อนุมัติ` : `คืนไม่เกิน ${fmt(r.cap)}/คืน`}</span>` : ''}</span><b>${fmt(r.hotel)}</b></div>
       ${r.ex.length ? `<div><span>ค่าใช้จ่ายอื่นที่ขอไว้</span><b>${fmt(r.extras)}</b></div>` : ''}
       ${(k.add || []).length ? `<div><span>ซื้อเพิ่มระหว่างทาง<br><span class="f">${r.proj ? 'รอ admin อนุมัติ' : `อนุมัติ ${k.add.filter((a) => a.ok).length}/${k.add.length} รายการ`}</span></span><b>${fmt(r.addTotal)}</b></div>` : ''}
-      <div class="tot"><span>ใช้จริง</span><b>${r.err ? '—' : fmt(r.total)}</b></div></div>
+      <div class="tot"><span>ใช้จริง</span><b>${r.err ? '—' : fmt(r.total)}</b></div>
+      ${r.others.length && !r.err ? r.others.map((o) => `<div><span>${esc(o.name)} สำรองจ่าย<br><span class="f">โอนคืนให้ ${esc(o.name)} โดยตรง</span></span><b>${fmt(o.amount)}</b></div>`).join('') + `<div><span>${esc(d.staffName)} ใช้เอง<br><span class="f">เทียบกับที่รับไป ${fmt(d.requested)}</span></span><b>${fmt(r.total - r.othersAmt)}</b></div>` : ''}</div>
       ${r.pending > 0 && !r.err ? `<p class="formula" style="margin:8px 0 0">${ms('pending', 'style="font-size:15px;vertical-align:-3px"')} รวมยอดที่รอ admin อนุมัติ ${fmt(r.pending)} บาท · ถ้าไม่อนุมัติ ยอดจะลดลง</p>` : ''}
-      ${r.err ? `<p class="formula" style="margin:12px 0;color:var(--warn)">${esc(r.err)}</p>` : pre ? preClrBox(d, r) : `<div class="diffbox ${diff < 0 ? 'refund' : diff > 0 ? 'topup' : 'even'}" style="margin:12px 0"><span>${diff < 0 ? 'ทีมงานต้องคืนเงิน' : diff > 0 ? 'บริษัทต้องจ่ายเพิ่ม' : 'พอดี ปิดใบได้ทันที'}</span><b>${fmt(Math.abs(diff))} บาท</b></div>`}
+      ${r.err ? `<p class="formula" style="margin:12px 0;color:var(--warn)">${esc(r.err)}</p>` : pre ? preClrBox(d, r) : `<div class="diffbox ${diff < 0 ? 'refund' : diff > 0 ? 'topup' : 'even'}" style="margin:12px 0"><span>${r.others.length ? esc(d.staffName) + ' · ' : ''}${diff < 0 ? (r.others.length ? 'ต้องคืนเงิน' : 'ทีมงานต้องคืนเงิน') : diff > 0 ? 'บริษัทต้องจ่ายเพิ่ม' : r.others.length ? 'พอดี' : 'พอดี ปิดใบได้ทันที'}</span><b>${fmt(Math.abs(diff))} บาท</b></div>${r.others.length ? `<div class="diffbox topup" style="margin:-4px 0 12px"><span>บริษัทโอนให้คนที่สำรองจ่าย<br><small>${r.others.map((o) => `${esc(o.name)} ${fmt(o.amount)}`).join(' · ')}</small></span><b>${fmt(r.othersAmt)} บาท</b></div>` : ''}`}
       ${topSrc}</div>
       ${pre ? `<button class="btn pri block" data-act="clrPre">${ms('task_alt')}ยืนยันผลเคลียร์${r.err ? '' : ` · โอน ${fmt(r.total)}`}</button>` : adminRev ? `<button class="btn pri block" data-act="clrConfirm">${ms('task_alt')}ยืนยันผลเคลียร์</button>${d.status === 'clearSub' ? `<div class="field" style="margin-top:10px"><label for="c-ret">เหตุผล (ถ้าส่งกลับให้แก้)</label><input class="inp" id="c-ret" placeholder="เช่น ใบเสร็จน้ำมันไม่ชัด"></div><button class="btn block" style="margin-top:6px" data-act="clrReturn">${ms('undo')}ส่งกลับให้แก้</button>` : ''}`
         : `<button class="btn pri block" data-act="clrSubmit">${ms('send')}ส่งเคลียร์ให้ admin ตรวจ</button>`}
@@ -1079,7 +1125,7 @@ function vPayq() {
   const active = ST.apv.batches.filter((b) => !['paid', 'cancelled'].includes(b.status)), done = ST.apv.batches.filter((b) => b.status === 'paid').slice(0, 6), canc = [];
   const bcard = (b) => `<div class="card bcard" role="button" tabindex="0" data-act="openBatch" data-v="${b.no}"><div class="row"><b class="num">${b.no}</b><span class="pill ${b.status === 'paid' ? 'p-closed' : b.status === 'cancelled' ? 'p-mute' : 'p-pending'}">${stageText(b)}</span><span class="sp num" style="font-weight:700;font-size:16px">${fmt(b.total)}</span></div>${b.status === 'cancelled' ? '' : stepper(b.status)}<small style="color:var(--sub)">${b.items.length} รายการ · สร้าง ${dt(b.date)}${b.paidAt ? ` · โอน ${dt(b.paidAt)}` : ''}</small>${b.status === 'cancelled' ? '' : `<button class="btn sm pbtn" data-act="apvPrint" data-v="${b.no}">${ms('print')}พิมพ์ใบเสนอ CEO (A4)</button>`}</div>`;
   const row = (x) => `<tr><td>${isAdmin() ? `<input type="checkbox" class="chk" data-sel="${esc(x.id)}" ${un.has(x.id) ? '' : 'checked'} aria-label="เลือก ${esc(x.title)}">` : ''}</td>
-    <td>${x.ceoNote ? `<span class="pill p-refund" style="display:inline-block;margin-bottom:4px">${ms('edit_note', 'style="font-size:15px;vertical-align:-3px"')} ${esc(x.ceoNote)}</span><br>` : ''}${x.type !== 'PC' ? tpill(x.type) : ''}<span class="kind">${kindLabel(x)}</span> ${x.ref ? `<button class="btn sm ghost" style="height:auto;padding:0 4px" data-act="openDoc" data-v="${esc(x.ref)}"><span class="num">${esc(x.ref)}</span></button>` : ''}<span class="sub" style="display:block;color:var(--sub);font-size:12.5px">${esc(x.title)}</span></td>
+    <td>${x.ceoNote ? `<span class="pill p-refund" style="display:inline-block;margin-bottom:4px">${ms('edit_note', 'style="font-size:15px;vertical-align:-3px"')} ${esc(x.ceoNote)}</span><br>` : ''}${x.type !== 'PC' ? tpill(x.type) : ''}<span class="kind">${kindLabel(x)}</span>${x.noCeo ? ' <span class="pill p-paid">ไม่ต้องเสนอ CEO</span>' : ''} ${x.ref ? `<button class="btn sm ghost" style="height:auto;padding:0 4px" data-act="openDoc" data-v="${esc(x.ref)}"><span class="num">${esc(x.ref)}</span></button>` : ''}<span class="sub" style="display:block;color:var(--sub);font-size:12.5px">${esc(x.title)}</span></td>
     <td>${esc(x.payee)}<span style="display:block;color:var(--sub);font-size:12.5px">${bankLine(x)}</span>${x.bankPending ? `<label class="ckl" style="color:var(--bad);font-size:12.5px;margin-top:4px"><input type="checkbox" data-bconf="${esc(x.id)}" ${bc.has(x.id) ? 'checked' : ''}> บัญชีเพิ่งเปลี่ยน · ตรวจกับเจ้าตัวแล้ว</label>` : ''}</td><td class="r num">${fmt(x.amount)}</td></tr>`;
   return `${apvTabs()}<p style="margin:0 0 14px;color:var(--sub)">รวมรายการที่ต้องจ่ายเป็นใบเดียว → พิมพ์เสนอ <b style="color:var(--ink)">CEO</b> เซ็น → รายการโอน: <b style="color:var(--ink)">ส่งเรื่องเข้าระบบ</b> → <b style="color:var(--ink)">COO</b> โอน แนบสลิป · รายการ<b style="color:var(--ink)">เงินสำรองจ่าย</b>: admin จ่ายเงินสดหลัง CEO อนุมัติ</p>
   <div class="grid g2" style="align-items:start"><div class="card"><h3>${ms('pending_actions')}รายการรอเข้าใบเสนอ CEO<span class="r">${W.length} รายการ</span></h3>
@@ -1122,6 +1168,21 @@ function showPrint(title, sub, pages) {
   pv.classList.add('on'); fitPrint();
 }
 const tTime = (iso) => iso ? `${thDate(String(iso).slice(0, 10))} ${new Date(iso).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' })} น.` : '—';
+/** รอบ 11: ตราประทับในรายงานปิดงาน — CEO / COO ไม่ต้องเซ็นซ้ำ (ระบุวันที่อนุมัติ/โอนจากระบบ) · admin เซ็นช่องเดียว */
+const dRange2 = (ds) => { const u = [...new Set(ds.filter(Boolean))].sort(); return !u.length ? '' : u.length === 1 ? thDate(u[0]) : `${thDate(u[0])} – ${thDate(u[u.length - 1])}`; };
+function ceoStamp(b) {
+  if (b.ceoSkip) return `<span class="rstamp g">✓ ไม่ต้องเสนอ CEO<br>ส่วนต่างไม่เกิน ${fmt(b.ceoSkip.limit)} บาท<br>${thDate(String(b.ceoSkip.at).slice(0, 10))}</span>`;
+  if (b.ceoApp) return `<span class="rstamp g">✓ CEO อนุมัติแล้ว<br>${esc(b.ceoApp.name)}<br>${tTime(b.ceoApp.at)}</span>`;
+  if (b.ceoAt) return `<span class="rstamp g">✓ CEO อนุมัติแล้ว<br>เอกสารลงนามแนบในระบบ<br>${tTime(b.ceoAt)}</span>`;
+  return '<span class="rstamp m">ยังไม่ผ่าน CEO</span>';
+}
+function payStamp(b, g) {
+  const bank = g.filter((x) => !x.cash && x.paid), cash = g.filter((x) => x.cash && x.paid), sum = (L) => fmt(L.reduce((t, x) => t + x.amount, 0));
+  const out = [];
+  if (bank.length) out.push(`<span class="rstamp b">✓ COO โอนแล้ว<br>${dRange2(bank.map((x) => x.paid.date))}<br>${bank.length} คน · ${sum(bank)} บาท</span>`);
+  if (cash.length) out.push(`<span class="rstamp p">✓ admin จ่ายเงินสด<br>${dRange2(cash.map((x) => x.paid.date))}<br>${cash.length} คน · ${sum(cash)} บาท</span>`);
+  return out.join('') || '<span class="rstamp m">ยังไม่ได้จ่าย</span>';
+}
 /** รายงานปิดใบเสนอ (A4) — หลักฐานเก็บแฟ้ม: ใครอนุมัติเมื่อไร · จ่ายใคร ช่องทางไหน เมื่อไร · รายการที่ถอด · ประวัติ */
 async function apvReport(no) {
   const r = await api('apvGet', { no }), b = r.batch, g = bGroupList(b);
@@ -1139,7 +1200,8 @@ async function apvReport(no) {
       <tfoot><tr><td></td><td colspan="2"><b>รวมจ่ายจริง</b> · โอน ${fmt(paidAmt - g.filter((x) => x.cash && x.paid).reduce((t, x) => t + x.amount, 0))} · เงินสำรองจ่าย ${fmt(g.filter((x) => x.cash && x.paid).reduce((t, x) => t + x.amount, 0))}</td><td style="text-align:right"><b>${fmt(paidAmt)}</b></td><td>${paidAmt < b.total ? `<small style="color:#B83A30">ค้างจ่าย ${fmt(b.total - paidAmt)}</small>` : ''}</td></tr></tfoot></table>
     ${edits.length ? `<div class="rnote"><b>แก้ไขหลักฐานการจ่าย:</b> ${edits.join(' · ')}</div>` : ''}
     <div class="rnote"><b>ประวัติ:</b> ${b.timeline.map((t) => `${tTime(t.at)} ${esc(t.text)}${t.byName ? ` (${esc(t.byName)})` : ''}`).join(' · ')}</div>
-    <div class="signs three"><div class="sign"><b>ผู้จัดทำ (admin)</b><div class="ln">( ${esc(b.createdByName)} )</div></div><div class="sign"><b>ผู้อนุมัติ (CEO)</b><div class="ln">( ${b.ceoApp ? esc(b.ceoApp.name) : '..............................'} )</div></div><div class="sign"><b>ผู้โอน (COO)</b><div class="ln">( .............................. )</div></div></div>
+    <div class="signs three rstamps"><div class="sign"><b>ผู้จัดทำ (admin)</b><div class="ln">( ${esc(b.createdByName)} )</div><small>วันที่ ......../......../........</small></div>
+      <div class="sign"><b>ผู้อนุมัติ (CEO)</b>${ceoStamp(b)}</div><div class="sign"><b>ผู้โอน / ผู้จ่าย</b>${payStamp(b, g)}</div></div>
     <div class="pfoot"><span>พิมพ์จาก C2-Pay · ${tTime(new Date().toISOString())}${cashAmt ? ` · เงินสำรองจ่าย ${fmt(cashAmt)}` : ''}</span><span>${b.no}</span></div></div>`;
   showPrint(b.no, 'รายงานปิดงาน · A4', page);
 }
@@ -1416,7 +1478,7 @@ function actionsOther(d, lead) {
     if (d.status === 'approve' && (d.type || 'TRV') === 'TRV') return `${preClearBtn(d)}<button class="btn ${preClearBtn(d).includes('openPreClr') ? '' : 'pri'} block" data-act="go" data-v="payq">${ms('approval')}ไปที่ขออนุมัติโอน</button>${tripTools(d)}`;
     if (d.status === 'approve') return `${preClearBtn(d)}<button class="btn ${preClearBtn(d).includes('openPreClr') ? '' : 'pri'} block" data-act="go" data-v="payq">${ms('approval')}ไปที่ขออนุมัติโอน</button>${tripTools(d)}${d.batch ? '' : `<button class="btn block" data-act="decideAsk" data-v="cancel">${ms('block')}ยกเลิกใบนี้</button><div id="noteBox"></div>`}`;
     if (d.type === 'ADV' && d.status === 'open') return `<button class="btn pri block" data-act="openAdv" data-v="${d.no}">${ms('fact_check')}เคลียร์ด้วยใบเสร็จ</button>`;
-    if (d.status === 'refund' || (d.status === 'topup' && d.settleSrc === 'BANK')) return actionsFor(d, lead);
+    if (d.status === 'refund' || d.status === 'topup') return actionsFor(d, lead);
     return '';
   }
   if (!lead) return '';
@@ -1994,8 +2056,11 @@ async function trvClick(a, v, b) {
     const d = doc(ST.openNo); if (!d) return true;
     if (v === 'post' && !need([['#tp-go', 'วันไปใหม่'], ['#tp-note', 'เหตุผลที่เลื่อน']])) return true;
     if (v === 'cancel' && !need([['#tp-note', 'เหตุผลที่ยกเลิก']])) return true;
+    if (v === 'adj' && !need([['#tp-fuel', 'ค่าน้ำมันที่จะโอน', vMoney0], ['#tp-note', 'เหตุผลที่ปรับยอด']])) return true;
     await busy(b, async () => {
       const note = $('#tp-note').value.trim(); let msg;
+      if (v === 'adj') { const r = await api('trvAdjust', { no: d.no, fuel: $('#tp-fuel').value, note }); msg = `ปรับยอดแล้ว · จะโอน ${fmt(r.requested)} บาท${r.batch ? ` · พิมพ์ใบเสนอ ${r.batch} ใหม่ก่อนให้ CEO เซ็น` : ''}`; }
+      else if (v && v.startsWith('po:')) { const r = await api('setPayVia', { id: v.slice(3), via: $('#tp-via').value, note }); msg = `เปลี่ยนเป็น${r.via === 'PC' ? 'เงินสำรองจ่าย' : 'โอนเข้าบัญชี'}แล้ว`; } else
       if (v === 'post') { const r = await api('trvPostpone', { no: d.no, go: $('#tp-go').value, note }); msg = `เลื่อนทริปเป็น ${dRange(r.go, r.back)} แล้ว · แจ้งผู้เดินทางแล้ว`; }
       else if (v === 'cancel') { const r = await api('trvCancelTrip', { no: d.no, note }); msg = r.refund ? `ยกเลิกทริปแล้ว · รอ ${d.staffName} คืนเงิน ${fmt(r.refund)} บาท` : 'ยกเลิกทริปแล้ว'; }
       else { const pc = payPcInfo(d); const r = await api('setPayVia', { id: pc.id, via: pc.to, note }); msg = `เปลี่ยนเป็น${r.via === 'PC' ? 'เงินสำรองจ่าย' : 'โอนเข้าบัญชี'}แล้ว${r.batch ? ` · ในใบเสนอ ${r.batch}` : ' · รอเข้าใบเสนอ CEO'}`; ST.apv = null; }
@@ -2042,7 +2107,7 @@ async function trvClick(a, v, b) {
     const ids = ST.apv.wait.filter((x) => !ST.unsel.has(x.id)).map((x) => x.id);
     const pend = ST.apv.wait.filter((x) => ids.includes(x.id) && x.bankPending && !ST.bconf.has(x.id));
     if (pend.length) { pend.forEach((x, i) => { const el = document.querySelector(`[data-bconf="${CSS.escape(x.id)}"]`); if (el) { el.closest('label').classList.add('bad'); if (!i) el.focus(); } }); toast(`กรอกข้อมูลไม่ครบ: ติ๊กยืนยันบัญชีที่เพิ่งเปลี่ยนของ ${[...new Set(pend.map((x) => x.payee))].join(', ')} (${pend.length} รายการ)`, 'error'); return true; }
-    await busy(b, async () => { const r = await api('apvCreate', { ids, bankConfirmed: [...ST.bconf] }); ST.unsel = new Set(); ST.bconf = new Set(); await reloadTrv(); await loadApv(); drawBatch(r.no); toast(`สร้าง ${r.no} แล้ว · พิมพ์เสนอ CEO`, 'approval'); });
+    await busy(b, async () => { const r = await api('apvCreate', { ids, bankConfirmed: [...ST.bconf] }); ST.unsel = new Set(); ST.bconf = new Set(); await reloadTrv(); await loadApv(); drawBatch(r.no); toast(r.skipNo ? `สร้าง ${r.no} (เสนอ CEO) และ ${r.skipNo} (ส่วนต่างไม่เกินเพดาน ไม่ต้องเสนอ CEO)` : (ST.apv.batches.find((x) => x.no === r.no) || {}).ceoSkip ? `สร้าง ${r.no} แล้ว · ส่วนต่างไม่เกินเพดาน ไม่ต้องเสนอ CEO` : `สร้าง ${r.no} แล้ว · พิมพ์เสนอ CEO`, 'approval'); });
     return true;
   }
   if (a === 'apvCeo') {
@@ -2257,6 +2322,7 @@ document.addEventListener('change', async (e) => {
     if (el.dataset.xcn !== undefined) { ST.clr.ex[+el.dataset.xcn].noRcpt = el.checked; render(); return; }
     if (el.dataset.fun !== undefined) { ST.clr.fuels[+el.dataset.fun].noRcpt = el.checked; render(); return; }
     if (el.dataset.adn !== undefined) { ST.clr.add[+el.dataset.adn].noRcpt = el.checked; render(); return; }
+    if (el.dataset.by) { const [kind, i] = el.dataset.by.split(':'); const arr = { fu: ST.clr.fuels, st: ST.clr.stays, xc: ST.clr.ex, ad: ST.clr.add }[kind]; if (arr && arr[+i]) arr[+i].by = el.value; updCalc(); return; }
     if (el.dataset.ado !== undefined) { ST.clr.add[+el.dataset.ado].ok = el.checked; render(); return; }
     if (el.dataset.ad && el.tagName === 'SELECT') { const [i, key] = el.dataset.ad.split(':'); ST.clr.add[+i][key] = el.value; return; }
     if ((el.dataset.fuf ?? el.dataset.adf ?? el.dataset.stf) !== undefined && el.files[0]) {
@@ -2282,7 +2348,7 @@ document.addEventListener('input', (e) => {
   if (el.id === 'cq') { ST.claimQ = el.value; const pos = el.selectionStart; render(); const n = $('#cq'); n.focus(); n.setSelectionRange(pos, pos); return; }
   const k = ST.clr; if (!k) return;
   if (el.dataset.c) { k[el.dataset.c] = el.value; if (el.dataset.c !== 'note') updCalc(); return; }
-  if (el.dataset.st) { const [i, key] = el.dataset.st.split(':'); k.stays[+i][key] = el.value; if (key === 'rate') { const ov = $(`#st-ov-${i}`); if (ov) ov.hidden = !(Number(el.value) > Number(ov.dataset.cap)); updCalc(); } return; }
+  if (el.dataset.st) { const [i, key] = el.dataset.st.split(':'); k.stays[+i][key] = el.value; if (key !== 'why') { const r = clrCalc(doc(ST.clrNo), k); k.stays.forEach((_, j) => { const ov = $(`#st-ov-${j}`); if (ov) ov.hidden = !r.stayOver[j]; }); updCalc(); } return; }
   if (el.dataset.xc) { const [i, key] = el.dataset.xc.split(':'); k.ex[+i][key] = el.value; if (key === 'amount') updCalc(); return; }
   if (el.dataset.fu) { const [i, key] = el.dataset.fu.split(':'); k.fuels[+i][key] = el.value; if (key !== 'why') updCalc(); return; }
   if (el.dataset.ad) { const [i, key] = el.dataset.ad.split(':'); k.add[+i][key] = el.value; if (key === 'amount' || key === 'desc') updCalc(); }
@@ -2359,6 +2425,7 @@ function vCeoq() {
 }
 
 function apvWho(b, ad) {
+  if (b.ceoSkip) return `<div class="banner good">${ms('bolt')}<span><b>ไม่ต้องเสนอ CEO</b> · ส่วนต่างหลังเคลียร์ไม่เกิน ${fmt(b.ceoSkip.limit)} บาทต่อใบ (ตั้งค่าได้ที่ ตั้งค่า → ค่าทั่วไป)</span></div>`;
   if (b.ceoApp) return `<div class="banner good">${ms('verified')}<span><b>CEO อนุมัติผ่านแอป</b> · ${esc(b.ceoApp.name)} · ${dtTime(b.ceoApp.at)}<br><small>รหัสอ้างอิง ${esc(b.ceoApp.ref)} · ยืนยันตัวตนด้วยรหัสผ่าน</small></span></div>`;
   if (ad && b.status === 'ceo') return `<div class="card ceo2"><h3>${ms('alt_route')}CEO อนุมัติได้ 2 ทาง</h3>
     <div class="opt2">${ms('smartphone')}<span><b>ทาง A · CEO กดในแอป</b><small>ไม่ต้องพิมพ์ · CEO เห็นใบนี้ในเมนู "รออนุมัติ" แล้ว</small></span></div>
