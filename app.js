@@ -17,7 +17,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const FN = firebase.app().functions('asia-southeast1');
 const TOKEN_KEY = 'c2pay_token';
-const VERSION = 'v1.2.1';
+const VERSION = 'v1.3';
 /** หน้าแอปไม่เลื่อนทั้งหน้า (เลื่อนเฉพาะในกล่อง) — แต่ html/body ที่ overflow:hidden ยังถูกเลื่อนได้จาก focus()/scrollIntoView
  * หรือคีย์บอร์ดบนจอ (PC จอสัมผัส) ทำให้ทั้งหน้าขยับขึ้นแล้วเห็นแถบขาวด้านล่าง → ดึงกลับที่เดิมทุกครั้ง */
 (function lockPageScroll() {
@@ -384,7 +384,8 @@ function vGeneral() {
         <div class="fsub full">${ms('ev_station')}รถไฟฟ้า</div>${f('kmPerKwh', 'รถไฟฟ้าวิ่งได้ (กม./kWh)')}${f('evPrice', 'ค่าไฟชาร์จนอกบริษัท (บาท/kWh)', 'แก้ได้ในแต่ละใบ')}
         ${f('evFreeKm', 'แนะนำ "ไม่เบิก" เมื่อรถไฟฟ้าวิ่งไม่เกิน (กม.)', 'ใส่ 0 = ไม่แนะนำ · ผู้ขอเปลี่ยนเองได้')}<div class="fsub full">${ms('payments')}เบี้ยเลี้ยง · ที่พัก · เงินสำรองจ่าย</div>
         ${f('allowance', 'เบี้ยเลี้ยง (บาท/คน/วัน)')}${f('hotel', 'ที่พัก (บาท/ห้อง/คืน)', 'ขอเกินได้รายทริป · Admin อนุมัติ')}
-        ${f('hotelWarn', 'เตือนที่พักเกิน (บาท/ห้อง/คืน)', 'เกินยอดนี้ขึ้นสีแดง')}${f('lowAlert', 'เตือนเงินสำรองจ่ายต่ำกว่า (บาท)')}${f('topupNoCeo', 'ส่วนต่างหลังเคลียร์ ไม่ต้องเสนอ CEO ถ้าไม่เกิน (บาท/ใบ)', '0 = ทุกยอดต้องผ่าน CEO')}</div></div>
+        ${f('hotelWarn', 'เตือนที่พักเกิน (บาท/ห้อง/คืน)', 'เกินยอดนี้ขึ้นสีแดง')}${f('lowAlert', 'เตือนเงินสำรองจ่ายต่ำกว่า (บาท)')}<div class="field full"><label class="swt" for="s-topupCeo"><input type="checkbox" role="switch" id="s-topupCeo" data-setb="topupCeo" ${s.topupCeo !== false ? 'checked' : ''}><span class="swt-ui" aria-hidden="true"></span><span><b>ส่วนต่างหลังเคลียร์ต้องผ่าน CEO</b><small>${s.topupCeo !== false ? 'เปิด · ใช้เพดานด้านล่าง (0 = ผ่าน CEO ทุกรายการ)' : 'ปิด · จ่ายเพิ่มทุกยอดไม่ต้องผ่าน CEO (เงินสำรองจ่าย = จ่ายทันที · โอน = ไปที่ COO เลย)'}</small></span></label></div>
+        ${s.topupCeo !== false ? f('topupNoCeo', 'ไม่ต้องเสนอ CEO ถ้าส่วนต่างไม่เกิน (บาท/ใบ)', '0 = ผ่าน CEO ทุกรายการ') : ''}</div></div>
       ${vehCard(D)}
       <div class="card"><h3>${ms('alarm')}กำหนดเคลียร์เงิน (นับจากวันจบทริป)</h3><div class="fgrid">
         ${f('clearDue', 'ครบกำหนด (วัน)', 'เตือนผู้เดินทาง')}${f('clearWarn', 'เตือนซ้ำ (วัน)', 'ขึ้นในรายการใกล้เกินกำหนด')}${f('clearMax', 'เกินกำหนด (วัน)', 'ป้ายแดง · แจ้ง Admin')}</div></div>
@@ -876,6 +877,9 @@ function preClearCard(d) {
 }
 /** admin: เลื่อนทริป / ยกเลิกทริป / จ่ายเงินสำรองจ่ายแทนการโอน (ฟอร์มเปิดใน #tripBox) */
 /** รอบ 10: เปลี่ยนช่องทางจ่าย (โอน ⇄ เงินสำรองจ่าย) — ไม่จ่ายทันที ยังต้องผ่านใบเสนอ CEO */
+/** รอบ 12: ส่วนต่างหลังเคลียร์ต้องผ่าน CEO ไหม (ตรงกับ backend topupNeedCeo) */
+const topupNeedCeo = (amt) => { const s = set(); if (s.topupCeo === false) return false; const lim = Number(s.topupNoCeo) || 0; return !(lim > 0 && amt <= lim); };
+const topupCeoNote = (amt) => topupNeedCeo(amt) ? 'ส่วนต่างเข้าใบเสนอ CEO ก่อนทุกช่องทาง' : 'ไม่ต้องผ่าน CEO · เงินสำรองจ่าย = จ่ายทันทีตอนยืนยัน · โอน = ไปที่ COO เลย';
 /** รอบ 11: ส่วนต่างแยกจ่ายรายคน (payouts) */
 function payoutsHtml(d) {
   const ad = isAdmin();
@@ -890,7 +894,8 @@ const topupLeft = (d) => (d.payouts ? poLeft(d).reduce((t, p) => t + p.amount, 0
 const waitingPay = (d) => !d.cancelled && ((d.status === 'approve' && !d.batch) || (d.status === 'topup' && !d.payouts && !d.batch) || poLeft(d).some((p) => !p.batch));
 const docVia = (d) => ((d.status === 'topup' ? d.settleSrc : d.paidFrom) === 'PC' ? 'PC' : 'BANK');
 function payPcInfo(d) {
-  const mk = (id, amount, batch, via, ext) => { const to = via === 'PC' ? 'BANK' : 'PC'; return { id, amount, batch, via, to, ext, label: `${ext ? 'เงินต่อทริป: ' : ''}${to === 'PC' ? 'เปลี่ยนเป็นจ่ายเงินสำรองจ่าย' : 'เปลี่ยนเป็นโอนเข้าบัญชี'}` }; };
+  // รอบ 12: เปลี่ยนเป็นเงินสำรองจ่าย = จ่ายทันที (ยกเว้นส่วนต่างหลังเคลียร์ที่ยังต้องผ่าน CEO)
+  const mk = (id, amount, batch, via, ext) => { const to = via === 'PC' ? 'BANK' : 'PC', now = to === 'PC' && !(d.status === 'topup' && topupNeedCeo(amount)); return { id, amount, batch, via, to, ext, now, label: `${ext ? 'เงินต่อทริป: ' : ''}${now ? 'จ่ายเงินสำรองจ่ายทันที' : to === 'PC' ? 'เปลี่ยนเป็นจ่ายเงินสำรองจ่าย' : 'เปลี่ยนเป็นโอนเข้าบัญชี'}` }; };
   if (d.status === 'open' && d.extPay) return mk(d.no + ':EXT', d.extPay.amount, d.extPay.batch, d.extPay.via === 'PC' ? 'PC' : 'BANK', true);
   if (!d.cancelled && (d.status === 'approve' || (d.status === 'topup' && !d.payouts))) return mk(d.no, d.status === 'topup' ? d.diff : d.requested, d.batch, docVia(d), false);
   return null;
@@ -928,10 +933,10 @@ function tripForm(d, kind) {
   }
   const pc = payPcInfo(d), bal = ST.trv.pcBalance, short = pc.to === 'PC' ? pc.amount - bal : 0;
   return `<div class="tform"><b>${pc.label}</b><dl class="kv"><dt>จ่ายให้</dt><dd>${esc(d.type === 'EXP' ? (d.payee || '—') : d.staffName)}</dd><dt>ยอด</dt><dd class="num"><b>${fmt(pc.amount)}</b></dd><dt>ช่องทาง</dt><dd>${pc.via === 'PC' ? 'เงินสำรองจ่าย' : 'โอนเข้าบัญชี'} → <b>${pc.to === 'PC' ? 'เงินสำรองจ่าย' : 'โอนเข้าบัญชี'}</b></dd>${pc.to === 'PC' ? `<dt>เงินสำรองจ่าย</dt><dd class="num">เหลือ ${fmt(bal)}</dd>` : ''}</dl>
-    <div class="banner info">${ms('info')}<span>${pc.batch ? `เปลี่ยนในใบเสนอ <b class="num">${esc(pc.batch)}</b> ได้เลย ยอดเท่าเดิม ไม่ต้องให้ CEO อนุมัติใหม่` : 'รายการยังต้องเข้าใบเสนอ CEO ตามปกติ'} · ${pc.to === 'PC' ? 'CEO อนุมัติแล้ว admin จ่ายเงินสดและกด "จ่ายเงินสำรองจ่ายแล้ว" ในใบเสนอ · COO ไม่ต้องโอน' : 'COO โอนตามปกติ'}</span></div>
-    ${short > 0 ? `<div class="banner warn">${ms('error')}<span>ตอนนี้เงินสำรองจ่ายไม่พอ ขาด <b class="num">${fmt(short)}</b> บาท · เติมก่อนถึงเวลาจ่าย</span></div>` : ''}
+    <div class="banner info">${ms('info')}<span>${pc.now ? `${pc.batch ? `ถอดออกจากใบเสนอ <b class="num">${esc(pc.batch)}</b> (COO ไม่ต้องโอน) · ` : ''}จ่ายเงินสดทันที ไม่ต้องผ่าน CEO · ตัดยอดเงินสำรองจ่าย` : `${pc.batch ? `เปลี่ยนในใบเสนอ <b class="num">${esc(pc.batch)}</b> ได้เลย ยอดเท่าเดิม ไม่ต้องให้ CEO อนุมัติใหม่` : 'รายการยังต้องเข้าใบเสนอ CEO ตามปกติ'} · ${pc.to === 'PC' ? 'CEO อนุมัติแล้ว admin จ่ายเงินสดและกด "จ่ายเงินสำรองจ่ายแล้ว" ในใบเสนอ' : 'COO โอนตามปกติ'}`}</span></div>
+    ${short > 0 ? `<div class="banner warn">${ms('error')}<span>เงินสำรองจ่ายไม่พอ ขาด <b class="num">${fmt(short)}</b> บาท · ${pc.now ? 'เติมเงินสำรองจ่ายก่อน' : 'เติมก่อนถึงเวลาจ่าย'}</span></div>` : ''}
     <div class="field"><label for="tp-note">หมายเหตุ (ถ้ามี)</label><input class="inp" id="tp-note" placeholder="เช่น ต้องออกเดินทางพรุ่งนี้เช้า"></div>
-    <button class="btn pri block" data-act="tripGo" data-v="pc">${ms(pc.to === 'PC' ? 'savings' : 'account_balance')}ยืนยัน${pc.label.replace(/^เงินต่อทริป: /, '')}</button></div>`;
+    <button class="btn pri block" data-act="tripGo" data-v="pc" ${pc.now && short > 0 ? 'disabled' : ''}>${ms(pc.to === 'PC' ? 'savings' : 'account_balance')}ยืนยัน${pc.label.replace(/^เงินต่อทริป: /, '')}</button></div>`;
 }
 document.addEventListener('input', (e) => { if (e.target.id === 'tp-fuel') { const n = $('#tp-new'); if (n) n.textContent = fmt((Number(e.target.dataset.base) || 0) + (Number(e.target.value) || 0)); return; } if (e.target.id !== 'tp-go') return; const [g, bk] = (e.target.dataset.backOf || '').split('|'); const v = e.target.value; if (!v || !g) return; $('#tp-back').textContent = dt(addDays(bk, Math.round((Date.parse(v) - Date.parse(g)) / 864e5))); });
 /** ปุ่มเคลียร์ก่อนโอน (admin): ใบเดินทางอนุมัติแล้ว ยังไม่โอน ทริปจบแล้ว และใบเสนอยังไม่ผ่าน CEO */
@@ -946,13 +951,13 @@ function preClearBtn(d) {
 function actionsFor(d, lead) {
   const pc = ST.trv.pcBalance, pp = (ST.trv.people || []).find((x) => x.id === d.staffId) || {};
   if (isAdmin()) {
-    if (d.status === 'submitted') return `<div class="srcpick"><label><input type="radio" name="src" value="PC" ${pc >= d.requested || !pp.hasBank ? 'checked' : ''}> เงินสำรองจ่าย<br><small style="color:var(--sub)">เหลือ ${fmt(pc)} · admin จ่ายหลัง CEO อนุมัติ</small></label><label><input type="radio" name="src" value="BANK" ${pc >= d.requested || !pp.hasBank ? '' : 'checked'} ${pp.hasBank ? '' : 'disabled'}> โอนเข้าบัญชี<br><small style="color:var(--sub)">${pp.hasBank ? (pp.bankPending ? 'บัญชีเพิ่งเปลี่ยน' : 'มีบัญชีรับโอน') : 'ยังไม่มีบัญชี'}</small></label></div>
+    if (d.status === 'submitted') return `<div class="srcpick"><label><input type="radio" name="src" value="PC" ${pc >= d.requested || !pp.hasBank ? 'checked' : ''}> เงินสำรองจ่าย<br><small style="color:var(--sub)">เหลือ ${fmt(pc)} · จ่ายทันที ไม่ผ่าน CEO</small></label><label><input type="radio" name="src" value="BANK" ${pc >= d.requested || !pp.hasBank ? '' : 'checked'} ${pp.hasBank ? '' : 'disabled'}> โอนเข้าบัญชี<br><small style="color:var(--sub)">${pp.hasBank ? (pp.bankPending ? 'บัญชีเพิ่งเปลี่ยน' : 'มีบัญชีรับโอน') : 'ยังไม่มีบัญชี'}</small></label></div>
       <button class="btn pri block" data-act="decide" data-v="approve">${ms('check')}อนุมัติ</button>
       <div style="display:flex;gap:8px"><button class="btn" style="flex:1" data-act="editReq">${ms('edit')}แก้ไข</button><button class="btn" style="flex:1" data-act="decideAsk" data-v="return">${ms('undo')}ส่งกลับแก้</button><button class="btn" style="flex:1" data-act="decideAsk" data-v="reject">${ms('block')}ไม่อนุมัติ</button></div>
       <div id="noteBox"></div>`;
     if (d.status === 'approve' && (d.type || 'TRV') === 'TRV') return `${preClearBtn(d)}<button class="btn ${preClearBtn(d).includes('openPreClr') ? '' : 'pri'} block" data-act="go" data-v="payq">${ms('approval')}ไปที่ขออนุมัติโอน</button>${tripTools(d)}`;
     if (d.status === 'approve') return `${preClearBtn(d)}<button class="btn ${preClearBtn(d).includes('openPreClr') ? '' : 'pri'} block" data-act="go" data-v="payq">${ms('approval')}ไปที่ขออนุมัติโอน</button>${tripTools(d)}${d.batch ? '' : `<button class="btn block" data-act="decideAsk" data-v="cancel">${ms('block')}ยกเลิกใบนี้</button><div id="noteBox"></div>`}`;
-    if (d.status === 'open' && d.extReq) return `<div class="srcpick"><label><input type="radio" name="xsrc" value="PC" ${pc >= d.extReq.amount || !pp.hasBank ? 'checked' : ''}> จ่ายเงินสำรองจ่าย<br><small style="color:var(--sub)">เหลือ ${fmt(pc)} · ผ่านใบเสนอ CEO</small></label><label><input type="radio" name="xsrc" value="BANK" ${pc >= d.extReq.amount || !pp.hasBank ? '' : 'checked'} ${pp.hasBank ? '' : 'disabled'}> โอนผ่านใบเสนอ CEO<br><small style="color:var(--sub)">${pp.hasBank ? 'เข้ารายการขออนุมัติโอน' : 'ยังไม่มีบัญชี'}</small></label></div>
+    if (d.status === 'open' && d.extReq) return `<div class="srcpick"><label><input type="radio" name="xsrc" value="PC" ${pc >= d.extReq.amount || !pp.hasBank ? 'checked' : ''}> จ่ายเงินสำรองจ่าย<br><small style="color:var(--sub)">เหลือ ${fmt(pc)} · จ่ายทันที ไม่ผ่าน CEO</small></label><label><input type="radio" name="xsrc" value="BANK" ${pc >= d.extReq.amount || !pp.hasBank ? '' : 'checked'} ${pp.hasBank ? '' : 'disabled'}> โอนผ่านใบเสนอ CEO<br><small style="color:var(--sub)">${pp.hasBank ? 'เข้ารายการขออนุมัติโอน' : 'ยังไม่มีบัญชี'}</small></label></div>
       <button class="btn pri block" data-act="extOk">${ms('check')}อนุมัติต่อทริป (+${fmt(d.extReq.amount)})</button><button class="btn block" data-act="extNoAsk">${ms('block')}ไม่อนุมัติ</button><div id="noteBox"></div>`;
     if (d.status === 'open' && d.extPay) return (d.extPay.batch ? `<button class="btn block" data-act="go" data-v="payq">${ms('approval')}เงินต่อทริปอยู่ในใบเสนอ ${esc(d.extPay.batch)}</button>` : `<button class="btn pri block" data-act="go" data-v="payq">${ms('approval')}ไปที่ขออนุมัติโอน (ต่อทริป ${fmt(d.extPay.amount)})</button><button class="btn block" data-act="extCancel">${ms('undo')}ยกเลิกการต่อทริป (กลับเป็นแผนเดิม)</button>`) + tripTools(d);
     if (d.status === 'open') return `<button class="btn block" data-act="openExt" data-v="${d.no}">${ms('add_location_alt')}ต่อทริป / เพิ่มสถานที่</button><button class="btn block" data-act="openClr" data-v="${d.no}">${ms('fact_check')}เคลียร์แทนทีมงาน</button>${tripTools(d)}`;
@@ -1077,7 +1082,7 @@ function vClr() {
         ${e.actual > e.amount ? `<span class="overtag bad">ใช้เกินที่ขอ ${fmt(e.actual - e.amount)} บาท</span>` : ''}</div>`; }).join('')}</div>
       ${r.exOver > 0 && adminRev ? `<label class="ckl excheck"><input type="checkbox" id="c-exo" data-cchk="exOver" ${k.exOver ? 'checked' : ''}> อนุมัติค่าใช้จ่ายอื่นที่เกินที่ขอ <b>${fmt(r.exOver)}</b> บาท</label>` : ''}</div>` : '';
   const files = `<div class="field full"><label for="c-files">ไฟล์แนบอื่น (ถ้ามี)</label><input class="inp" type="file" id="c-files" accept="image/*,application/pdf" multiple style="padding-top:6px"><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${k.files.map((f, i) => `<span class="chip">${fileBtn(f, `ใบเสร็จ ${i + 1}`)}<button class="btn sm ghost" style="height:20px;padding:0 2px" data-act="fileDel" data-v="${i}" aria-label="เอาไฟล์ออก">${ms('close', 'style="font-size:16px"')}</button></span>`).join('') || '<span class="hint">ยังไม่แนบ</span>'}</div></div>`;
-  const topSrc = adminRev && !pre && (diff > 0 || r.others.length) && !r.err ? `<div class="srcpick" style="margin-bottom:8px"><label><input type="radio" name="tsrc" value="PC" ${k.src === 'PC' ? 'checked' : ''}> จ่ายส่วนต่างเงินสำรองจ่าย<br><small style="color:var(--sub)">เหลือ ${fmt(ST.trv.pcBalance)}</small></label><label><input type="radio" name="tsrc" value="BANK" ${k.src === 'BANK' ? 'checked' : ''}> โอนส่วนต่าง</label></div><p class="formula" style="margin:-2px 0 8px">ส่วนต่างเข้าใบเสนอ CEO ก่อนทุกช่องทาง</p>` : '';
+  const topSrc = adminRev && !pre && (diff > 0 || r.others.length) && !r.err ? `<div class="srcpick" style="margin-bottom:8px"><label><input type="radio" name="tsrc" value="PC" ${k.src === 'PC' ? 'checked' : ''}> จ่ายส่วนต่างเงินสำรองจ่าย<br><small style="color:var(--sub)">เหลือ ${fmt(ST.trv.pcBalance)}</small></label><label><input type="radio" name="tsrc" value="BANK" ${k.src === 'BANK' ? 'checked' : ''}> โอนส่วนต่าง</label></div><p class="formula" style="margin:-2px 0 8px">${topupCeoNote(Math.max(0, diff) + r.othersAmt)}</p>` : '';
   return `<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap"><button class="btn sm ghost" data-act="go" data-v="${isAdmin() ? 'clear' : 'home'}">${ms('arrow_back')}${isAdmin() ? 'เคลียร์เงิน' : 'ทริปของฉัน'}</button><span class="tpill t-TRV">TRV</span><b class="num">${d.no}</b><span style="color:var(--sub)">${esc(d.staffName)} · ${esc(d.title)} · ${dRange(d.go, d.back)}</span></div>
     ${pre ? `<div class="banner info" style="margin-bottom:12px">${ms('receipt_long')}<span><b>เคลียร์ก่อนโอน</b> · ทริปจบแล้วแต่ยังไม่ได้โอน ใส่ยอดที่ ${esc(d.staffName)} สำรองจ่ายจริง · ระบบจะโอนตามยอดจริงและปิดใบทันทีเมื่อโอนเสร็จ</span></div>` : ''}
     ${adminRev && d.status === 'clearSub' ? `<div class="banner info" style="margin-bottom:12px">${ms('inbox')}<span><b>${esc(d.clearSub.byName)}</b> ส่งเคลียร์เมื่อ ${dtTime(d.clearSub.at)} · ตรวจตัวเลขกับใบเสร็จ แก้ได้ แล้วกดยืนยัน${d.clearSub.note ? `<br>หมายเหตุ: ${esc(d.clearSub.note)}` : ''}</span></div>` : ''}
@@ -1180,7 +1185,7 @@ const tTime = (iso) => iso ? `${thDate(String(iso).slice(0, 10))} ${new Date(iso
 /** รอบ 11: ตราประทับในรายงานปิดงาน — CEO / COO ไม่ต้องเซ็นซ้ำ (ระบุวันที่อนุมัติ/โอนจากระบบ) · admin เซ็นช่องเดียว */
 const dRange2 = (ds) => { const u = [...new Set(ds.filter(Boolean))].sort(); return !u.length ? '' : u.length === 1 ? thDate(u[0]) : `${thDate(u[0])} – ${thDate(u[u.length - 1])}`; };
 function ceoStamp(b) {
-  if (b.ceoSkip) return `<span class="rstamp g">✓ ไม่ต้องเสนอ CEO<br>ส่วนต่างไม่เกิน ${fmt(b.ceoSkip.limit)} บาท<br>${thDate(String(b.ceoSkip.at).slice(0, 10))}</span>`;
+  if (b.ceoSkip) return `<span class="rstamp g">✓ ไม่ต้องเสนอ CEO<br>${b.ceoSkip.limit > 0 ? `ส่วนต่างไม่เกิน ${fmt(b.ceoSkip.limit)} บาท` : 'ส่วนต่างหลังเคลียร์ (ตั้งค่า)'}<br>${thDate(String(b.ceoSkip.at).slice(0, 10))}</span>`;
   if (b.ceoApp) return `<span class="rstamp g">✓ CEO อนุมัติแล้ว<br>${esc(b.ceoApp.name)}<br>${tTime(b.ceoApp.at)}</span>`;
   if (b.ceoAt) return `<span class="rstamp g">✓ CEO อนุมัติแล้ว<br>เอกสารลงนามแนบในระบบ<br>${tTime(b.ceoAt)}</span>`;
   return '<span class="rstamp m">ยังไม่ผ่าน CEO</span>';
@@ -1431,7 +1436,7 @@ async function nfSave(b) {
     const r = await api('docCreate', { type: t, form, file, files });
     ST.nf = null; await reloadTrv(); ST.pc = null; ST.ledger = null; ST.payq = null;
     ST.view = 'claims'; render(); drawDoc(r.no);
-    toast(`${t === 'RMB' ? `บันทึก ${r.no} · รอจ่ายคืน` : `${t === 'EXP' ? 'บันทึก' : 'สร้าง'} ${r.no}`} · ${t === 'RMB' ? '' : f.src === 'PC' ? 'เงินสำรองจ่าย · ' : ''}${t === 'RMB' ? '' : 'เข้ารายการรอเข้าใบเสนอ CEO'}`);
+    toast(`${t === 'RMB' ? `บันทึก ${r.no} · รอจ่ายคืน` : `${t === 'EXP' ? 'บันทึก' : 'สร้าง'} ${r.no}`} · ${t === 'RMB' ? '' : f.src === 'PC' ? 'จ่ายเงินสำรองจ่ายแล้ว (ไม่ผ่าน CEO)' : 'เข้ารายการรอเข้าใบเสนอ CEO'}`);
   });
 }
 
@@ -1482,7 +1487,7 @@ function drawOther(d) {
 function actionsOther(d, lead) {
   const pc = ST.trv.pcBalance, pp = (ST.trv.people || []).find((x) => x.id === d.staffId) || {};
   if (isAdmin()) {
-    if (d.status === 'pending') return `<div class="srcpick"><label><input type="radio" name="rsrc" value="PC" ${pc >= d.requested || !pp.hasBank ? 'checked' : ''}> จ่ายเงินสำรองจ่าย<br><small style="color:var(--sub)">เหลือ ${fmt(pc)} · ผ่านใบเสนอ CEO</small></label><label><input type="radio" name="rsrc" value="BANK" ${pc >= d.requested || !pp.hasBank ? '' : 'checked'} ${pp.hasBank ? '' : 'disabled'}> โอนคืน<br><small style="color:var(--sub)">${pp.hasBank ? 'เข้ารายการรอโอน' : 'ยังไม่มีบัญชี'}</small></label></div>
+    if (d.status === 'pending') return `<div class="srcpick"><label><input type="radio" name="rsrc" value="PC" ${pc >= d.requested || !pp.hasBank ? 'checked' : ''}> จ่ายเงินสำรองจ่าย<br><small style="color:var(--sub)">เหลือ ${fmt(pc)} · จ่ายทันที ไม่ผ่าน CEO</small></label><label><input type="radio" name="rsrc" value="BANK" ${pc >= d.requested || !pp.hasBank ? '' : 'checked'} ${pp.hasBank ? '' : 'disabled'}> โอนคืน<br><small style="color:var(--sub)">${pp.hasBank ? 'เข้ารายการรอโอน' : 'ยังไม่มีบัญชี'}</small></label></div>
       <button class="btn pri block" data-act="rmbPay">${ms('payments')}จ่ายคืน ${fmt(d.requested)} บาท</button><button class="btn block" data-act="decideAsk" data-v="cancel">${ms('block')}ยกเลิกใบนี้</button><div id="noteBox"></div>`;
     if (d.status === 'approve' && (d.type || 'TRV') === 'TRV') return `${preClearBtn(d)}<button class="btn ${preClearBtn(d).includes('openPreClr') ? '' : 'pri'} block" data-act="go" data-v="payq">${ms('approval')}ไปที่ขออนุมัติโอน</button>${tripTools(d)}`;
     if (d.status === 'approve') return `${preClearBtn(d)}<button class="btn ${preClearBtn(d).includes('openPreClr') ? '' : 'pri'} block" data-act="go" data-v="payq">${ms('approval')}ไปที่ขออนุมัติโอน</button>${tripTools(d)}${d.batch ? '' : `<button class="btn block" data-act="decideAsk" data-v="cancel">${ms('block')}ยกเลิกใบนี้</button><div id="noteBox"></div>`}`;
@@ -2072,7 +2077,7 @@ async function trvClick(a, v, b) {
       else if (v && v.startsWith('po:')) { const r = await api('setPayVia', { id: v.slice(3), via: $('#tp-via').value, note }); msg = `เปลี่ยนเป็น${r.via === 'PC' ? 'เงินสำรองจ่าย' : 'โอนเข้าบัญชี'}แล้ว`; } else
       if (v === 'post') { const r = await api('trvPostpone', { no: d.no, go: $('#tp-go').value, note }); msg = `เลื่อนทริปเป็น ${dRange(r.go, r.back)} แล้ว · แจ้งผู้เดินทางแล้ว`; }
       else if (v === 'cancel') { const r = await api('trvCancelTrip', { no: d.no, note }); msg = r.refund ? `ยกเลิกทริปแล้ว · รอ ${d.staffName} คืนเงิน ${fmt(r.refund)} บาท` : 'ยกเลิกทริปแล้ว'; }
-      else { const pc = payPcInfo(d); const r = await api('setPayVia', { id: pc.id, via: pc.to, note }); msg = `เปลี่ยนเป็น${r.via === 'PC' ? 'เงินสำรองจ่าย' : 'โอนเข้าบัญชี'}แล้ว${r.batch ? ` · ในใบเสนอ ${r.batch}` : ' · รอเข้าใบเสนอ CEO'}`; ST.apv = null; }
+      else { const pc = payPcInfo(d); const r = await api('setPayVia', { id: pc.id, via: pc.to, note }); msg = r.paidNow ? `จ่ายเงินสำรองจ่าย ${fmt(r.amount || pc.amount)} บาทแล้ว${r.batch ? ` · ถอดจาก ${r.batch}` : ''}` : r.note ? r.note : `เปลี่ยนเป็น${r.via === 'PC' ? 'เงินสำรองจ่าย' : 'โอนเข้าบัญชี'}แล้ว${r.batch ? ` · ในใบเสนอ ${r.batch}` : ' · รอเข้าใบเสนอ CEO'}`; ST.apv = null; ST.pc = null; }
       await reloadTrv(); ST.apv = null; ST.pc = null; ST.ledger = null; render(); drawDoc(d.no); toast(msg, 'task_alt');
     });
     return true;
@@ -2089,13 +2094,13 @@ async function trvClick(a, v, b) {
   if (a === 'rmbPay') {
     const no = ST.openNo, src = (document.querySelector('input[name="rsrc"]:checked') || {}).value;
     if (!src) { toast('กรอกข้อมูลไม่ครบ: เลือกวิธีจ่ายคืน (เงินสำรองจ่าย / โอน)', 'error'); return true; }
-    await busy(b, async () => { await api('rmbPay', { no, src }); await reloadTrv(); ST.pc = null; ST.ledger = null; ST.payq = null; render(); drawDoc(no); toast(`${no} ${src === 'PC' ? 'จ่ายเงินสำรองจ่าย · ' : ''}เข้ารายการรอเข้าใบเสนอ CEO แล้ว`); });
+    await busy(b, async () => { await api('rmbPay', { no, src }); await reloadTrv(); ST.pc = null; ST.ledger = null; ST.payq = null; render(); drawDoc(no); toast(src === 'PC' ? `${no} จ่ายคืนเงินสำรองจ่ายแล้ว · ปิดใบ` : `${no} เข้ารายการรอเข้าใบเสนอ CEO แล้ว`); });
     return true;
   }
   // รอบ 4: ต่อทริป · ใบสำคัญ · รายงาน
   if (a === 'openExt') { const d = doc(v); ST.form = extForm(d); ST.view = 'req'; closeDrawer(); render(); $('#view').scrollTop = 0; refreshRoute(); return true; }
   if (a === 'extOk') { const no = ST.openNo, src = (document.querySelector('input[name="xsrc"]:checked') || {}).value; if (doc(no).extReq.amount > 0 && !src) { toast('กรอกข้อมูลไม่ครบ: เลือกวิธีจ่ายเงินส่วนเพิ่ม', 'error'); return true; }
-    await busy(b, async () => { await api('trvExtDecide', { no, decision: 'approve', src }); await reloadTrv(); render(); drawDoc(no); toast(`อนุมัติต่อทริปแล้ว · ${src === 'PC' ? 'เงินสำรองจ่าย · ' : ''}เข้ารายการรอเข้าใบเสนอ CEO`); }); return true; }
+    await busy(b, async () => { await api('trvExtDecide', { no, decision: 'approve', src }); await reloadTrv(); render(); drawDoc(no); toast(`อนุมัติต่อทริปแล้ว · ${src === 'PC' ? 'จ่ายเงินสำรองจ่ายแล้ว (ไม่ผ่าน CEO)' : 'เข้ารายการรอเข้าใบเสนอ CEO'}`); }); return true; }
   if (a === 'extNoAsk') { $('#noteBox').innerHTML = `<div class="field"><label for="dn">เหตุผลที่ไม่อนุมัติต่อทริป</label><input class="inp" id="dn"></div><button class="btn danger block" style="margin-top:6px" data-act="extNoGo">${ms('block')}ยืนยันไม่อนุมัติ</button>`; $('#dn').focus(); return true; }
   if (a === 'extNoGo') { const no = ST.openNo; if (!need([['#dn', 'เหตุผล']])) return true; await busy(b, async () => { await api('trvExtDecide', { no, decision: 'reject', note: $('#dn').value }); await reloadTrv(); render(); drawDoc(no); toast('ไม่อนุมัติต่อทริปแล้ว'); }); return true; }
   if (a === 'extCancel') { const no = ST.openNo; await busy(b, async () => { await api('trvExtCancel', { no }); await reloadTrv(); render(); drawDoc(no); toast('ยกเลิกการต่อทริปแล้ว · กลับเป็นแผนเดิม'); }); return true; }
@@ -2230,7 +2235,7 @@ async function trvClick(a, v, b) {
       else if (v === 'approve') { const src = (document.querySelector('input[name="src"]:checked') || {}).value; if (!src) { toast('เลือกวิธีจ่ายเงิน', 'error'); return; } await api('trvDecide', { no, decision: 'approve', src }); }
       else await api('trvDecide', { no, decision: v, note: $('#dn').value });
       await reloadTrv(); render(); drawDoc(no);
-      toast({ approve: 'อนุมัติแล้ว · เข้ารายการรอเข้าใบเสนอ CEO', return: 'ส่งกลับให้แก้แล้ว', reject: 'ไม่อนุมัติแล้ว', cancel: 'ยกเลิกแล้ว' }[v]);
+      toast(v === 'approve' && (doc(no) || {}).status === 'open' ? 'อนุมัติแล้ว · จ่ายเงินสำรองจ่ายแล้ว (ไม่ผ่าน CEO)' : { approve: 'อนุมัติแล้ว · เข้ารายการรอเข้าใบเสนอ CEO', return: 'ส่งกลับให้แก้แล้ว', reject: 'ไม่อนุมัติแล้ว', cancel: 'ยกเลิกแล้ว' }[v]);
     });
     return true;
   }
@@ -2406,6 +2411,7 @@ document.addEventListener('change', (e) => {
 });
 document.addEventListener('input', (e) => {
   const el = e.target; if (!ST.draft) return;
+  if (el.dataset.setb) { ST.draft.settings[el.dataset.setb] = el.checked; render(); return; }
   if (el.dataset.set) ST.draft.settings[el.dataset.set] = el.value === '' ? '' : Number(el.value);
   else if (el.dataset.veh !== undefined && el.dataset.k) { ST.draft.vehicles[+el.dataset.veh][el.dataset.k] = el.value; }
   else if (el.dataset.cust !== undefined && el.dataset.k) { const c = ST.draft.customers[+el.dataset.cust]; c[el.dataset.k] = el.dataset.k === 'name' ? el.value : (el.value === '' ? null : Number(el.value)); }
@@ -2434,7 +2440,7 @@ function vCeoq() {
 }
 
 function apvWho(b, ad) {
-  if (b.ceoSkip) return `<div class="banner good">${ms('bolt')}<span><b>ไม่ต้องเสนอ CEO</b> · ส่วนต่างหลังเคลียร์ไม่เกิน ${fmt(b.ceoSkip.limit)} บาทต่อใบ (ตั้งค่าได้ที่ ตั้งค่า → ค่าทั่วไป)</span></div>`;
+  if (b.ceoSkip) return `<div class="banner good">${ms('bolt')}<span><b>ไม่ต้องเสนอ CEO</b> · ${b.ceoSkip.limit > 0 ? `ส่วนต่างหลังเคลียร์ไม่เกิน ${fmt(b.ceoSkip.limit)} บาทต่อใบ` : 'ตั้งค่าให้ส่วนต่างหลังเคลียร์ไม่ต้องผ่าน CEO'} (ตั้งค่าได้ที่ ตั้งค่า → ค่าทั่วไป)</span></div>`;
   if (b.ceoApp) return `<div class="banner good">${ms('verified')}<span><b>CEO อนุมัติผ่านแอป</b> · ${esc(b.ceoApp.name)} · ${dtTime(b.ceoApp.at)}<br><small>รหัสอ้างอิง ${esc(b.ceoApp.ref)} · ยืนยันตัวตนด้วยรหัสผ่าน</small></span></div>`;
   if (ad && b.status === 'ceo') return `<div class="card ceo2"><h3>${ms('alt_route')}CEO อนุมัติได้ 2 ทาง</h3>
     <div class="opt2">${ms('smartphone')}<span><b>ทาง A · CEO กดในแอป</b><small>ไม่ต้องพิมพ์ · CEO เห็นใบนี้ในเมนู "รออนุมัติ" แล้ว</small></span></div>
