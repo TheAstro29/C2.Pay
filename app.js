@@ -17,7 +17,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const FN = firebase.app().functions('asia-southeast1');
 const TOKEN_KEY = 'c2pay_token';
-const VERSION = 'v1.3';
+const VERSION = 'v1.3.1';
 /** หน้าแอปไม่เลื่อนทั้งหน้า (เลื่อนเฉพาะในกล่อง) — แต่ html/body ที่ overflow:hidden ยังถูกเลื่อนได้จาก focus()/scrollIntoView
  * หรือคีย์บอร์ดบนจอ (PC จอสัมผัส) ทำให้ทั้งหน้าขยับขึ้นแล้วเห็นแถบขาวด้านล่าง → ดึงกลับที่เดิมทุกครั้ง */
 (function lockPageScroll() {
@@ -246,6 +246,9 @@ function renderNav() {
 
 function render() {
   if (!ST.me) return;
+  // รอบ 12b: จำหน้าที่เคยเปิด ไว้ให้ปุ่ม Back ย้อนกลับ (ไม่จำตอนย้อนเอง)
+  if (ST.navLast && ST.navLast !== ST.view && !ST.navBack) { (ST.navStack = ST.navStack || []).push(ST.navLast); if (ST.navStack.length > 30) ST.navStack.shift(); }
+  ST.navBack = false; ST.navLast = ST.view;
   renderNav();
   $('#ttl').textContent = TITLES[ST.view] || '';
   $('#acts').innerHTML = `${IN_FRAME ? `<button class="btn sm ghost" data-act="openTab" title="เปิด C2-Pay ในแท็บใหม่ (พิมพ์และดาวน์โหลดไฟล์ได้เต็มที่)">${ms('open_in_new')}<span class="pc-only">เปิดในแท็บใหม่</span></button>` : ''}<button class="btn sm ghost" data-act="refresh" title="โหลดข้อมูลใหม่">${ms('refresh')}<span class="pc-only">โหลดใหม่</span></button>`;
@@ -2384,6 +2387,7 @@ document.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key ==
 
 let cdTimer = null;
 function afterRender() {
+  armBack();
   waDecorate();
   genAccordion();
   // ช่องยืนยันขั้น 3: ปุ่มลบกดได้หลังพิมพ์ข้อความ + รหัสผ่าน แล้วรอ 5 วินาที
@@ -2454,7 +2458,6 @@ function ceoOpen(ref, replace) {
   const no = ST.openBatch || ST.ceoBack; const b = ST.apv && ST.apv.batches.find((x) => x.no === no); if (!b) return;
   const L = ceoNavList(b), i = L.findIndex((x) => x.ref === ref); if (i < 0) return;
   drawDoc(ref); ST.ceoBack = no; ST.ceoRef = ref; ST.openBatch = no;
-  if (!replace && !(history.state && history.state.c2ceo)) { try { history.pushState({ c2ceo: 1 }, ''); } catch (e) { /* ไม่เป็นไร */ } }
   const x = L[i], S = ceoState(b), d = S.dec[x.id] || '';
   const dh = $('#drawer .dh'); if (!dh) return;
   dh.outerHTML = `<div class="dh ceodh"><button class="btn sm ghost" data-act="ceoBack" aria-label="กลับไปใบเสนอ ${esc(no)}">${ms('arrow_back')}</button>
@@ -2479,10 +2482,28 @@ function ceoAdvance(b, fromId) {
 }
 function ceoBackToBatch() {
   const no = ST.ceoBack; if (!no) return; ST.ceoBack = null; ST.ceoRef = null;
-  if (history.state && history.state.c2ceo) { ST.ceoPopSkip = true; try { history.back(); } catch (e) { ST.ceoPopSkip = false; } }
   drawBatch(no);
 }
-window.addEventListener('popstate', () => { if (ST.ceoPopSkip) { ST.ceoPopSkip = false; return; } if (ST.ceoBack) ceoBackToBatch(); });
+/** รอบ 12b: ปุ่ม Back ของมือถือ/เบราว์เซอร์ = ย้อนในแอป (ปิดหน้าต่างที่เปิดอยู่ → กลับหน้าก่อนหน้า)
+ * วางประวัติ "กันชน" ไว้ 1 ชั้น · กด Back ที่หน้าแรก 2 ครั้งติด = ออกจากแอป */
+function appBack() {
+  const sh = $('#psh'); if (sh) { const x = $('#psh-x', sh); if (x) x.click(); else sh.remove(); return true; }
+  const pv = $('#printv'); if (pv && pv.classList.contains('on')) { pv.classList.remove('on'); return true; }
+  if (ST.ceoBack) { ceoBackToBatch(); return true; }
+  const dr = $('#drawer'); if (dr && dr.classList.contains('on')) { closeDrawer(); return true; }
+  const st = ST.navStack || []; while (st.length && st[st.length - 1] === ST.view) st.pop();
+  if (st.length) { ST.navBack = true; ST.view = st.pop(); render(); const v = $('#view'); if (v) v.scrollTop = 0; return true; }
+  if (ST.view !== 'home') { ST.navBack = true; ST.view = 'home'; render(); return true; }
+  return false;
+}
+function armBack() { try { if (!(history.state && history.state.c2top)) history.pushState({ c2top: 1 }, ''); } catch (e) { /* ไม่เป็นไร */ } }
+window.addEventListener('popstate', () => {
+  if (!ST.me) return;
+  if (ST.exitArmed) { ST.exitArmed = false; try { history.back(); } catch (e) { /* ออกไม่ได้ก็อยู่ต่อ */ } return; }
+  if (appBack()) { armBack(); return; }
+  ST.exitArmed = true; armBack(); toast('กดย้อนกลับอีกครั้งเพื่อออกจากแอป', 'logout');
+  setTimeout(() => { ST.exitArmed = false; }, 2500);
+});
 function addBackBar(no) {
   const dh = $('#drawer .dh'); if (!dh) return;
   dh.insertAdjacentHTML('beforebegin', `<button class="ceoback" data-act="ceoBack">${ms('arrow_back')}กลับไปใบเสนอ <span class="num">${esc(no)}</span> (ตัดสินต่อ)</button>`);
