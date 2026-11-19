@@ -17,7 +17,8 @@ self.addEventListener('push', (e) => {
     tag: d.tag || undefined,
     renotify: !!d.tag,
     data: { url: d.url || './' },
-  }));
+  }).then(() => self.clients.matchAll({ type: 'window', includeUncontrolled: true }))
+    .then((list) => list.forEach((c) => c.postMessage({ c2pay: 'bell' })))); // รอบ 13: ให้กระดิ่งในแอปอัปเดตทันที
 });
 
 self.addEventListener('notificationclick', (e) => {

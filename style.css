@@ -991,3 +991,15 @@ details.wslip summary::-webkit-details-marker { display: none; }
 .swt input:focus-visible + .swt-ui { outline: 2px solid var(--brand, #3F654D); outline-offset: 2px; }
 .swt b { display: block; font-size: 14px; } .swt small { display: block; color: var(--sub); font-size: 12.5px; line-height: 1.5; }
 @media (prefers-reduced-motion: reduce) { .swt .swt-ui, .swt .swt-ui::after { transition: none; } }
+
+/* รอบ 13: กระดิ่งแจ้งเตือน */
+.bellb { position: relative; }
+.bellb .badge { position: absolute; top: -5px; right: -5px; min-width: 18px; height: 18px; padding: 0 5px; font-size: 10.5px; }
+.bitem { align-items: flex-start; }
+.bitem .bgo { flex: 1; min-width: 0; display: flex; gap: 10px; align-items: flex-start; text-align: left; background: none; border: 0; padding: 0; color: inherit; font: inherit; cursor: pointer; }
+.bitem .btx { min-width: 0; }
+.bitem .btx b { display: block; overflow-wrap: anywhere; }
+.bitem.unread .btx b::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #E5675C; margin-right: 6px; vertical-align: middle; }
+.bitem:not(.unread) .btx { opacity: .7; }
+.bset { border-top: 1px solid var(--line); padding-top: 10px; }
+.bset summary { cursor: pointer; display: flex; align-items: center; gap: 6px; font-weight: 600; color: var(--brand); min-height: 40px; }

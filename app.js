@@ -17,7 +17,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const FN = firebase.app().functions('asia-southeast1');
 const TOKEN_KEY = 'c2pay_token';
-const VERSION = 'v1.3.1';
+const VERSION = 'v1.4.0';
 /** หน้าแอปไม่เลื่อนทั้งหน้า (เลื่อนเฉพาะในกล่อง) — แต่ html/body ที่ overflow:hidden ยังถูกเลื่อนได้จาก focus()/scrollIntoView
  * หรือคีย์บอร์ดบนจอ (PC จอสัมผัส) ทำให้ทั้งหน้าขยับขึ้นแล้วเห็นแถบขาวด้านล่าง → ดึงกลับที่เดิมทุกครั้ง */
 (function lockPageScroll() {
@@ -148,7 +148,7 @@ function showLogin(msg = '') {
 
 async function logout() {
   const pt = pLS.get(); if (pt) { try { await api('pushUnregister', { ptoken: pt }); } catch (e) {} pLS.set(''); try { await firebase.messaging().deleteToken(); } catch (e) {} }
-  ST.push = null;
+  ST.push = null; ST.bell = null;
   const t = getToken(); setToken(null);
   try { if (t) await FN.httpsCallable('logoutSession')({ token: t }); } catch (e) { /* ไม่เป็นไร */ }
   ST.me = null; stopTV(); showLogin();
@@ -251,7 +251,8 @@ function render() {
   ST.navBack = false; ST.navLast = ST.view;
   renderNav();
   $('#ttl').textContent = TITLES[ST.view] || '';
-  $('#acts').innerHTML = `${IN_FRAME ? `<button class="btn sm ghost" data-act="openTab" title="เปิด C2-Pay ในแท็บใหม่ (พิมพ์และดาวน์โหลดไฟล์ได้เต็มที่)">${ms('open_in_new')}<span class="pc-only">เปิดในแท็บใหม่</span></button>` : ''}<button class="btn sm ghost" data-act="refresh" title="โหลดข้อมูลใหม่">${ms('refresh')}<span class="pc-only">โหลดใหม่</span></button>`;
+  if (!ST.bell) { ST.bell = { unread: 0, items: [], prefs: {} }; setTimeout(bellPoll, 0); }
+  $('#acts').innerHTML = `${bellOk() ? `<button class="btn sm ghost bellb" data-act="bell" aria-label="การแจ้งเตือน" title="การแจ้งเตือน">${ms('notifications')}<span class="badge red" id="bellN" ${ST.bell.unread ? '' : 'hidden'}>${ST.bell.unread > 99 ? '99+' : ST.bell.unread}</span></button>` : ''}${IN_FRAME ? `<button class="btn sm ghost" data-act="openTab" title="เปิด C2-Pay ในแท็บใหม่ (พิมพ์และดาวน์โหลดไฟล์ได้เต็มที่)">${ms('open_in_new')}<span class="pc-only">เปิดในแท็บใหม่</span></button>` : ''}<button class="btn sm ghost" data-act="refresh" title="โหลดข้อมูลใหม่">${ms('refresh')}<span class="pc-only">โหลดใหม่</span></button>`;
   if (!isAdmin() && !isCeo()) $('#ttl').textContent = ST.view === 'home' ? 'ทริปของฉัน' : $('#ttl').textContent;
   const V = { ceoq: vCeoq, settings: vSettings, profile: vProfile, claims: vClaims, inbox: vInbox, clear: vClearList, payq: vPayq, pc: vPc, req: vReq, clr: vClr, more: vMore, new: vNew, ledger: vLedger, adv: vAdv, report: vReport };
   const v = (V[ST.view] || (isAdmin() || isCeo() ? vDash : vMyTrips))();
@@ -1002,7 +1003,7 @@ const addLines = (a) => (a.adds || []).map((e) => `<div><span>${esc(e.desc)} <sp
 function whoSel(d, kind, i, cur) {
   const T = (d && d.travelers) || []; if (T.length < 2) return '';
   const v = cur && T.some((t) => t.id === cur) ? cur : d.staffId;
-  return `<label class="who" for="by-${kind}-${i}">${ms('person', 'style="font-size:17px"')}<span>คนจ่าย</span><select class="sel" id="by-${kind}-${i}" data-by="${kind}:${i}">${T.map((t) => `<option value="${esc(t.id)}" ${t.id === v ? 'selected' : ''}>${esc(t.name)}${t.id === d.staffId ? ' (ผู้รับเงิน)' : ''}</option>`).join('')}</select></label>`;
+  return `<label class="payer" for="by-${kind}-${i}">${ms('person', 'style="font-size:17px"')}<span>คนจ่าย</span><select class="sel" id="by-${kind}-${i}" data-by="${kind}:${i}">${T.map((t) => `<option value="${esc(t.id)}" ${t.id === v ? 'selected' : ''}>${esc(t.name)}${t.id === d.staffId ? ' (ผู้รับเงิน)' : ''}</option>`).join('')}</select></label>`;
 }
 function fuelsHtml(d, k, r) {
   const ev = d.plan.car === 'ev', none = d.plan.car === 'none', lo = addDays(d.go, -1), unit = ev ? 'kWh' : 'ลิตร';
@@ -2991,7 +2992,55 @@ async function deepLink(href) {
     else if (view === 'clear') { ST.trv = null; ST.view = isAdmin() ? 'clear' : 'home'; closeDrawer(); render(); }
   } catch (e) { fail(e); }
 }
-if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', (e) => { if (e.data && e.data.c2pay === 'open' && e.data.url) deepLink(e.data.url); });
+if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', (e) => { if (e.data && e.data.c2pay === 'open' && e.data.url) deepLink(e.data.url); if (e.data && e.data.c2pay === 'bell') bellPoll(true); });
+
+// ===== รอบ 13: กระดิ่งแจ้งเตือนในแอป =====
+// อัปเดตเอง: ทันทีเมื่อมี push เข้าเครื่องนี้ (service worker ส่งข้อความมา) · ทุก 30 วินาทีตอนเปิดหน้าอยู่ · ทุกครั้งที่กลับมาที่แท็บ
+const bellOk = () => !!(ST.me && !['none', 'guest'].includes(ST.me.role) && !ST.me.display);
+const bellShown = () => $('#drawer').classList.contains('on') && !!$('#drawer .bellh');
+const bellIcon = (k) => (Object.values(PUSH_OPTS).flat().find((o) => o[0] === k) || [])[1] || 'notifications';
+async function bellPoll(force) {
+  if (!bellOk() || $('#stage').hidden || (document.hidden && force !== true)) return;
+  try {
+    if (bellShown()) Object.assign(ST.bell, await api('bellList'));
+    else ST.bell.unread = (await api('bellCount')).unread;
+    paintBell();
+  } catch (e) { /* เงียบ · ลองใหม่รอบหน้า */ }
+}
+function paintBell() {
+  const n = ST.bell.unread || 0, el = $('#bellN');
+  if (el) { el.hidden = !n; el.textContent = n > 99 ? '99+' : n; }
+  if (bellShown()) { const open = !!($('#drawer details.bset') || {}).open; $('#drawer').innerHTML = bellHtml(open); }
+}
+function bellHtml(setOpen) {
+  const B = ST.bell, opts = PUSH_OPTS[ST.me.role] || PUSH_OPTS.user;
+  const list = B.items.map((x) => `<div class="drow bitem ${x.read ? '' : 'unread'}"><button class="bgo" data-act="bellGo" data-v="${esc(x.id)}"><span class="dic">${ms(bellIcon(x.kind))}</span><span class="btx"><b>${esc(x.title)}</b>${x.body ? `<small>${esc(x.body)}</small>` : ''}<small>${dtTime(x.at)}</small></span></button><button class="btn sm ghost" data-act="bellDel" data-v="${esc(x.id)}" aria-label="ลบแจ้งเตือนนี้" title="ลบ">${ms('close')}</button></div>`).join('') || '<div class="empty">ยังไม่มีแจ้งเตือน</div>';
+  const prefs = opts.map(([k, i, t]) => `<label class="drow prow"><span class="dic">${ms(i)}</span><span style="flex:1;min-width:0"><b>${t}</b></span><input type="checkbox" class="pswitch" data-bpk="${k}" ${B.prefs[k] !== false ? 'checked' : ''} aria-label="แสดง${t}ในกระดิ่ง"></label>`).join('');
+  return `<div class="dh bellh"><h2>การแจ้งเตือน</h2>${B.unread ? `<button class="btn sm ghost" style="margin-left:auto" data-act="bellAll">${ms('done_all')}อ่านทั้งหมด</button>` : ''}<button class="btn sm ghost x" data-act="closeDrawer" aria-label="ปิด">${ms('close')}</button></div>
+    <div class="db"><div>${list}</div><details class="bset" ${setOpen ? 'open' : ''}><summary>${ms('tune')}เลือกเรื่องที่แสดงในกระดิ่ง</summary>${prefs}<p class="formula">ปิดแล้ว เรื่องนั้นจะไม่เข้ากระดิ่ง · ไม่กระทบแจ้งเตือนบนมือถือ (ตั้งค่าที่หน้าโปรไฟล์)</p></details></div>`;
+}
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-act^="bell"]'); if (!b) return;
+  const a = b.dataset.act, id = b.dataset.v, B = ST.bell;
+  try {
+    if (a === 'bell') { openDrawer(`<div class="dh bellh"><h2>การแจ้งเตือน</h2><button class="btn sm ghost x" data-act="closeDrawer" aria-label="ปิด">${ms('close')}</button></div><div class="db"><div class="empty">กำลังโหลด…</div></div>`); Object.assign(B, await api('bellList')); paintBell(); }
+    else if (a === 'bellGo') {
+      const x = B.items.find((i) => i.id === id); if (!x) return;
+      if (!x.read) { x.read = true; B.unread = Math.max(0, B.unread - 1); api('bellRead', { id }).catch(() => {}); }
+      paintBell();
+      if (/[?&](open|apv|view)=/.test(x.url)) deepLink(x.url); else closeDrawer();
+    }
+    else if (a === 'bellDel') { B.items = B.items.filter((i) => i.id !== id); paintBell(); B.unread = (await api('bellDel', { id })).unread; paintBell(); }
+    else if (a === 'bellAll') { B.items.forEach((i) => { i.read = true; }); B.unread = 0; paintBell(); B.unread = (await api('bellRead', {})).unread; paintBell(); }
+  } catch (err) { fail(err); }
+});
+document.addEventListener('change', async (e) => {
+  const k = e.target.dataset && e.target.dataset.bpk; if (!k) return;
+  try { ST.bell.prefs = (await api('bellPrefs', { prefs: { [k]: e.target.checked } })).prefs; toast(e.target.checked ? 'แสดงในกระดิ่งแล้ว' : 'ไม่แสดงในกระดิ่งแล้ว', 'notifications'); }
+  catch (err) { e.target.checked = !e.target.checked; fail(err); }
+});
+setInterval(bellPoll, 30000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) bellPoll(); });
 
 boot();
 })();
