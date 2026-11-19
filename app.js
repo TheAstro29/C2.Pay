@@ -904,6 +904,12 @@ function payPcInfo(d) {
   if (!d.cancelled && (d.status === 'approve' || (d.status === 'topup' && !d.payouts))) return mk(d.no, d.status === 'topup' ? d.diff : d.requested, d.batch, docVia(d), false);
   return null;
 }
+/** รอบ 14: ปุ่มปรับยอดต่อทริป (admin) · ถ้าย้ายไปจ่ายเงินสำรองจ่ายแล้ว (paid) จะไม่มี extPay ปุ่มก็ไม่ขึ้น */
+function xadjBtn(d) {
+  if ((d.type || 'TRV') !== 'TRV' || d.status !== 'open' || d.cancelled || !(d.extReq || d.extPay)) return '';
+  const n = ((d.extReq ? d.extReq.adjusts : ((d.ext || [])[(d.ext || []).length - 1] || {}).adjusts) || []).length;
+  return `<button class="btn block" data-act="tripAsk" data-v="xadj">${ms('tune')}ปรับยอดต่อทริป${n ? ` (ปรับแล้ว ${n} ครั้ง)` : ''}</button>`;
+}
 function tripTools(d) {
   const trv = (d.type || 'TRV') === 'TRV', canTrip = trv && !d.cancelled && ['approve', 'open'].includes(d.status) && !d.extReq;
   const pc = payPcInfo(d);
@@ -919,6 +925,14 @@ function tripForm(d, kind) {
       ${d.batch ? `<div class="banner warn">${ms('print')}<span>อยู่ในใบเสนอ <b class="num">${esc(d.batch)}</b> ที่รอ CEO เซ็น · ระบบแก้ยอดให้ <b>ต้องพิมพ์ใบเสนอใหม่</b></span></div>` : ''}
       <div class="banner info">${ms('info')}<span>โอนแล้ว ${esc(d.staffName)} ยังต้อง<b>เคลียร์ตอนจบทริปตามปกติ</b> (ใส่ลิตร + แนบบิล) ใช้ไม่หมดคืนส่วนที่เหลือ</span></div>
       <button class="btn pri block" data-act="tripGo" data-v="adj">${ms('tune')}ยืนยันปรับยอด</button></div>`; }
+  if (kind === 'xadj') { // รอบ 14: ปรับค่าน้ำมันส่วนเพิ่มของต่อทริป (รออนุมัติ / อนุมัติแล้วยังไม่โอน)
+    const req = d.extReq, e = req || (d.ext || [])[(d.ext || []).length - 1] || {}, cur = Number(e.diff && e.diff.fuel) || 0, amt = req ? req.amount : (d.extPay ? d.extPay.amount : 0), bno = !req && d.extPay ? d.extPay.batch : null;
+    return `<div class="tform"><b>ปรับยอดต่อทริป</b><small>แก้ค่าน้ำมันส่วนเพิ่มของการต่อทริป ${req ? 'ก่อนอนุมัติ' : 'ก่อนโอน'} · ไม่ต้องใส่ลิตร ไม่ต้องแนบบิล</small>
+      <dl class="kv"><dt>ค่าน้ำมันส่วนเพิ่มตอนนี้</dt><dd class="num">${fmt(cur)}</dd><dt>ยอดต่อทริปตอนนี้</dt><dd class="num"><b>${fmt(amt)}</b></dd></dl>
+      <div class="fgrid"><div class="field"><label for="tp-fuel">ค่าน้ำมันส่วนเพิ่ม (บาท)</label><input class="inp num" type="number" id="tp-fuel" value="${esc(cur)}" data-base="${amt - cur}"></div><div class="field"><label>ยอดต่อทริปใหม่</label><div class="inp ro num" id="tp-new">${fmt(amt)}</div></div></div>
+      <div class="field"><label for="tp-note">เหตุผล</label><input class="inp" id="tp-note" placeholder="เช่น ระยะทางจริงไกลกว่าที่คำนวณ"></div>
+      ${bno ? `<div class="banner warn">${ms('print')}<span>อยู่ในใบเสนอ <b class="num">${esc(bno)}</b> ที่รอ CEO เซ็น · ระบบแก้ยอดให้ <b>ต้องพิมพ์ใบเสนอใหม่</b> (ถ้า CEO อนุมัติแล้วจะปรับไม่ได้)</span></div>` : ''}
+      <button class="btn pri block" data-act="tripGo" data-v="xadj">${ms('tune')}ยืนยันปรับยอดต่อทริป</button></div>`; }
   if (kind && kind.startsWith('po:')) { const p = (d.payouts || []).find((x) => `${d.no}:P:${x.staffId}` === kind.slice(3)) || {};
     return `<div class="tform"><b>เปลี่ยนช่องทางจ่าย · ${esc(p.name)} ${fmt(p.amount)}</b><div class="field"><label for="tp-via">ช่องทาง</label><select class="sel" id="tp-via"><option value="BANK" ${p.via !== 'PC' ? 'selected' : ''}>โอนเข้าบัญชี</option><option value="PC" ${p.via === 'PC' ? 'selected' : ''}>เงินสำรองจ่าย (admin จ่ายเงินสด)</option></select></div>
       <div class="field"><label for="tp-note">หมายเหตุ (ถ้ามี)</label><input class="inp" id="tp-note"></div><button class="btn pri block" data-act="tripGo" data-v="${esc(kind)}">${ms('swap_horiz')}บันทึก</button></div>`; }
@@ -962,8 +976,8 @@ function actionsFor(d, lead) {
     if (d.status === 'approve' && (d.type || 'TRV') === 'TRV') return `${preClearBtn(d)}<button class="btn ${preClearBtn(d).includes('openPreClr') ? '' : 'pri'} block" data-act="go" data-v="payq">${ms('approval')}ไปที่ขออนุมัติโอน</button>${tripTools(d)}`;
     if (d.status === 'approve') return `${preClearBtn(d)}<button class="btn ${preClearBtn(d).includes('openPreClr') ? '' : 'pri'} block" data-act="go" data-v="payq">${ms('approval')}ไปที่ขออนุมัติโอน</button>${tripTools(d)}${d.batch ? '' : `<button class="btn block" data-act="decideAsk" data-v="cancel">${ms('block')}ยกเลิกใบนี้</button><div id="noteBox"></div>`}`;
     if (d.status === 'open' && d.extReq) return `<div class="srcpick"><label><input type="radio" name="xsrc" value="PC" ${pc >= d.extReq.amount || !pp.hasBank ? 'checked' : ''}> จ่ายเงินสำรองจ่าย<br><small style="color:var(--sub)">เหลือ ${fmt(pc)} · จ่ายทันที ไม่ผ่าน CEO</small></label><label><input type="radio" name="xsrc" value="BANK" ${pc >= d.extReq.amount || !pp.hasBank ? '' : 'checked'} ${pp.hasBank ? '' : 'disabled'}> โอนผ่านใบเสนอ CEO<br><small style="color:var(--sub)">${pp.hasBank ? 'เข้ารายการขออนุมัติโอน' : 'ยังไม่มีบัญชี'}</small></label></div>
-      <button class="btn pri block" data-act="extOk">${ms('check')}อนุมัติต่อทริป (+${fmt(d.extReq.amount)})</button><button class="btn block" data-act="extNoAsk">${ms('block')}ไม่อนุมัติ</button><div id="noteBox"></div>`;
-    if (d.status === 'open' && d.extPay) return (d.extPay.batch ? `<button class="btn block" data-act="go" data-v="payq">${ms('approval')}เงินต่อทริปอยู่ในใบเสนอ ${esc(d.extPay.batch)}</button>` : `<button class="btn pri block" data-act="go" data-v="payq">${ms('approval')}ไปที่ขออนุมัติโอน (ต่อทริป ${fmt(d.extPay.amount)})</button><button class="btn block" data-act="extCancel">${ms('undo')}ยกเลิกการต่อทริป (กลับเป็นแผนเดิม)</button>`) + tripTools(d);
+      <button class="btn pri block" data-act="extOk">${ms('check')}อนุมัติต่อทริป (+${fmt(d.extReq.amount)})</button>${xadjBtn(d)}<button class="btn block" data-act="extNoAsk">${ms('block')}ไม่อนุมัติ</button><div id="noteBox"></div><div id="tripBox"></div>`;
+    if (d.status === 'open' && d.extPay) return (d.extPay.batch ? `<button class="btn block" data-act="go" data-v="payq">${ms('approval')}เงินต่อทริปอยู่ในใบเสนอ ${esc(d.extPay.batch)}</button>` : `<button class="btn pri block" data-act="go" data-v="payq">${ms('approval')}ไปที่ขออนุมัติโอน (ต่อทริป ${fmt(d.extPay.amount)})</button><button class="btn block" data-act="extCancel">${ms('undo')}ยกเลิกการต่อทริป (กลับเป็นแผนเดิม)</button>`) + xadjBtn(d) + (tripTools(d) || '<div id="tripBox"></div>');
     if (d.status === 'open') return `<button class="btn block" data-act="openExt" data-v="${d.no}">${ms('add_location_alt')}ต่อทริป / เพิ่มสถานที่</button><button class="btn block" data-act="openClr" data-v="${d.no}">${ms('fact_check')}เคลียร์แทนทีมงาน</button>${tripTools(d)}`;
     if (d.status === 'clearSub') return `<button class="btn pri block" data-act="openClr" data-v="${d.no}">${ms('fact_check')}ตรวจผลเคลียร์</button>`;
     if (d.status === 'refund') return `<p class="formula" style="margin:0">รอ ${esc(d.staffName)} คืนเงิน <b>${fmt(-d.diff)}</b> บาท</p><div class="srcpick"><label><input type="radio" name="rhow" value="PC" checked> รับเงินสด (เข้าเงินสำรองจ่าย)</label><label><input type="radio" name="rhow" value="BANK"> โอนคืนเข้าบัญชี</label></div>
@@ -2075,9 +2089,11 @@ async function trvClick(a, v, b) {
     if (v === 'post' && !need([['#tp-go', 'วันไปใหม่'], ['#tp-note', 'เหตุผลที่เลื่อน']])) return true;
     if (v === 'cancel' && !need([['#tp-note', 'เหตุผลที่ยกเลิก']])) return true;
     if (v === 'adj' && !need([['#tp-fuel', 'ค่าน้ำมันที่จะโอน', vMoney0], ['#tp-note', 'เหตุผลที่ปรับยอด']])) return true;
+    if (v === 'xadj' && !need([['#tp-fuel', 'ค่าน้ำมันส่วนเพิ่ม', vMoney0], ['#tp-note', 'เหตุผลที่ปรับยอด']])) return true;
     await busy(b, async () => {
       const note = $('#tp-note').value.trim(); let msg;
       if (v === 'adj') { const r = await api('trvAdjust', { no: d.no, fuel: $('#tp-fuel').value, note }); msg = `ปรับยอดแล้ว · จะโอน ${fmt(r.requested)} บาท${r.batch ? ` · พิมพ์ใบเสนอ ${r.batch} ใหม่ก่อนให้ CEO เซ็น` : ''}`; }
+      else if (v === 'xadj') { const r = await api('trvExtAdjust', { no: d.no, fuel: $('#tp-fuel').value, note }); msg = `ปรับยอดต่อทริปแล้ว · ${fmt(r.amount)} บาท${r.batch ? ` · พิมพ์ใบเสนอ ${r.batch} ใหม่ก่อนให้ CEO เซ็น` : ''}`; }
       else if (v && v.startsWith('po:')) { const r = await api('setPayVia', { id: v.slice(3), via: $('#tp-via').value, note }); msg = `เปลี่ยนเป็น${r.via === 'PC' ? 'เงินสำรองจ่าย' : 'โอนเข้าบัญชี'}แล้ว`; } else
       if (v === 'post') { const r = await api('trvPostpone', { no: d.no, go: $('#tp-go').value, note }); msg = `เลื่อนทริปเป็น ${dRange(r.go, r.back)} แล้ว · แจ้งผู้เดินทางแล้ว`; }
       else if (v === 'cancel') { const r = await api('trvCancelTrip', { no: d.no, note }); msg = r.refund ? `ยกเลิกทริปแล้ว · รอ ${d.staffName} คืนเงิน ${fmt(r.refund)} บาท` : 'ยกเลิกทริปแล้ว'; }
