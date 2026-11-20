@@ -993,8 +993,8 @@ details.wslip summary::-webkit-details-marker { display: none; }
 @media (prefers-reduced-motion: reduce) { .swt .swt-ui, .swt .swt-ui::after { transition: none; } }
 
 /* รอบ 13: กระดิ่งแจ้งเตือน */
-.bellb { position: relative; }
-.bellb .badge { position: absolute; top: -5px; right: -5px; min-width: 18px; height: 18px; padding: 0 5px; font-size: 10.5px; }
+.btn.bellb { position: relative; overflow: visible; } /* .btn ตั้ง overflow:hidden ไว้ → ตัวเลขที่ยื่นออกนอกปุ่มถูกตัดเหลือแค่มุมแดง */
+.bellb .badge { position: absolute; top: -4px; right: -4px; min-width: 18px; height: 18px; padding: 0 5px; font-size: 10.5px; line-height: 1; box-shadow: 0 0 0 2px var(--bg, #fff); pointer-events: none; }
 .bitem { align-items: flex-start; }
 .bitem .bgo { flex: 1; min-width: 0; display: flex; gap: 10px; align-items: flex-start; text-align: left; background: none; border: 0; padding: 0; color: inherit; font: inherit; cursor: pointer; }
 .bitem .btx { min-width: 0; }
