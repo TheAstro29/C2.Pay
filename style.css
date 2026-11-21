@@ -964,6 +964,7 @@ details.wslip summary::-webkit-details-marker { display: none; }
 .a4.rpt tfoot td { border-top: 1.5px solid #3F654D; font-size: 12px; }
 .a4.rpt .rnote { font-size: 10.5px; color: #4a4a48; margin-top: 10px; line-height: 1.6; }
 .a4 .signs.three { grid-template-columns: repeat(3, minmax(0, 200px)); }
+.a4 .signs.one { grid-template-columns: minmax(0, 260px); justify-content: end; } /* รอบ 16: รายงานเงินสำรองจ่าย · admin ลงนามคนเดียว */
 .vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .fchg { position: relative; height: 30px; cursor: pointer; } .fchg:focus-within { outline: 2px solid var(--brand, #3F654D); outline-offset: 2px; }
 .fug.fuh { font-size: 12px; color: var(--sub); padding: 0 9px; } .fug.fuh span:first-child { padding-left: 2px; }
