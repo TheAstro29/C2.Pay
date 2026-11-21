@@ -964,6 +964,21 @@ details.wslip summary::-webkit-details-marker { display: none; }
 .a4.rpt tfoot td { border-top: 1.5px solid #3F654D; font-size: 12px; }
 .a4.rpt .rnote { font-size: 10.5px; color: #4a4a48; margin-top: 10px; line-height: 1.6; }
 .a4 .signs.three { grid-template-columns: repeat(3, minmax(0, 200px)); }
+/* รอบ 18: รายการห้อง — คอม: ห้อง | ราคา | หน่วย | ลบ (เหตุผลขึ้นบรรทัดถัดไปเต็มแถว) · มือถือ: ซ่อนคำว่า "บาท/คืน" ให้ช่องราคากว้าง */
+.rooms { display: flex; flex-direction: column; gap: 8px; }
+.rmrow { display: grid; grid-template-columns: 64px minmax(0, 220px) auto 34px; gap: 8px; align-items: center; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--soft); }
+.rmno { font-weight: 600; font-size: 13.5px; color: var(--ink); }
+.rmunit { font-size: 12.5px; color: var(--sub); white-space: nowrap; }
+.rmlock { grid-column: 2 / -1; font-size: 14px; } .rmlock small { color: var(--sub); }
+.rmwhy { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 4px; }
+.rmwhy[hidden] { display: none; }
+.rmwarn { color: var(--bad); font-size: 12px; } .rmwarn[hidden] { display: none; }
+.rmfoot { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 8px; font-size: 13.5px; color: var(--sub); }
+.rmfoot b { color: var(--ink); font-size: 15px; }
+@media (max-width: 520px) {
+  .rmrow { grid-template-columns: 54px minmax(0, 1fr) 34px; padding: 8px; }
+  .rmunit { display: none; }
+}
 .a4 .signs.one { grid-template-columns: minmax(0, 260px); justify-content: end; } /* รอบ 16: รายงานเงินสำรองจ่าย · admin ลงนามคนเดียว */
 .vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .fchg { position: relative; height: 30px; cursor: pointer; } .fchg:focus-within { outline: 2px solid var(--brand, #3F654D); outline-offset: 2px; }

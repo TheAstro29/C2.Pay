@@ -722,10 +722,23 @@ function carBox(f, k) {
 
 function newForm(d) {
   const s = set();
-  if (d) return { editNo: d.no, staffId: d.staffId, travelerIds: d.travelers.map((t) => t.id).filter((x) => x !== d.staffId), title: d.title, go: d.go, back: d.back, stops: [...d.stops], geo: [...(d.geo || d.stops.map(() => null))], kmManual: !!d.kmReason || d.kmCalc == null, km: d.plan.km, kmReason: d.kmReason || '', kmCalc: d.kmCalc, kmWhy: '', rooms: d.plan.rooms, hotelOver: !!d.plan.hotelOver, hotelRate: d.plan.hotelRate || '', hotelReason: d.plan.hotelReason || '', hotelSkip: [...(d.plan.hotelSkip || [])], hotelSkipWhy: d.plan.hotelSkipWhy || '', hotelSkipRef: d.plan.hotelSkipRef || '', extras: (d.plan.extras || []).map((e) => ({ ...e })), car: d.plan.car || 'fuel', carWhy: d.plan.carWhy || '', veh: vehOfPlan(d.plan), price: d.plan.car === 'ev' || d.plan.car === 'none' ? s.fuelPrice : d.plan.price, priceEv: d.plan.car === 'ev' ? d.plan.price : (s.evPrice || 8), evAsked: true };
+  if (d) return { editNo: d.no, staffId: d.staffId, travelerIds: d.travelers.map((t) => t.id).filter((x) => x !== d.staffId), title: d.title, go: d.go, back: d.back, stops: [...d.stops], geo: [...(d.geo || d.stops.map(() => null))], kmManual: !!d.kmReason || d.kmCalc == null, km: d.plan.km, kmReason: d.kmReason || '', kmCalc: d.kmCalc, kmWhy: '', rooms: d.plan.rooms, roomList: roomListForm(d.plan), hotelOver: false, hotelRate: '', hotelReason: '', hotelSkip: [...(d.plan.hotelSkip || [])], hotelSkipWhy: d.plan.hotelSkipWhy || '', hotelSkipRef: d.plan.hotelSkipRef || '', extras: (d.plan.extras || []).map((e) => ({ ...e })), car: d.plan.car || 'fuel', carWhy: d.plan.carWhy || '', veh: vehOfPlan(d.plan), price: d.plan.car === 'ev' || d.plan.car === 'none' ? s.fuelPrice : d.plan.price, priceEv: d.plan.car === 'ev' ? d.plan.price : (s.evPrice || 8), evAsked: true };
   const t = todayTH();
-  return { staffId: ST.me.id, travelerIds: [], title: '', go: addDays(t, 1), back: addDays(t, 2), stops: [''], geo: [null], kmManual: false, km: '', kmReason: '', kmCalc: null, kmWhy: '', rooms: 1, hotelOver: false, hotelRate: '', hotelReason: '', hotelSkip: [], hotelSkipWhy: '', hotelSkipRef: '', extras: [], car: 'fuel', carWhy: '', veh: { mode: '', id: '', plate: '', prov: '' }, price: s.fuelPrice, priceEv: s.evPrice || 8, evAsked: false };
+  return { staffId: ST.me.id, travelerIds: [], title: '', go: addDays(t, 1), back: addDays(t, 2), stops: [''], geo: [null], kmManual: false, km: '', kmReason: '', kmCalc: null, kmWhy: '', rooms: 1, roomList: [{ rate: '', why: '' }], hotelOver: false, hotelRate: '', hotelReason: '', hotelSkip: [], hotelSkipWhy: '', hotelSkipRef: '', extras: [], car: 'fuel', carWhy: '', veh: { mode: '', id: '', plate: '', prov: '' }, price: s.fuelPrice, priceEv: s.evPrice || 8, evAsked: false };
 }
+/** รอบ 18: รายการห้อง (แต่ละห้องราคาต่อคืนของตัวเอง) · ใบเดิมที่มีแค่ rooms × rate แปลงเป็นรายการให้ */
+function roomListForm(p) {
+  if (Array.isArray(p.roomList) && p.roomList.length) return p.roomList.map((r) => ({ rate: r.over ? r.rate : '', why: r.why || '' }));
+  return Array.from({ length: Math.max(1, p.rooms || 1) }, () => ({ rate: p.hotelOver ? p.hotelRate || '' : '', why: p.hotelOver ? p.hotelReason || '' : '' }));
+}
+const roomsOut = (f) => ({ roomList: (f.roomList || []).map((r) => ({ rate: r.rate, why: r.why })), rooms: (f.roomList || []).length || 1, hotelOver: false });
+/** ราคาห้องต่อคืนของแผน (ใบใหม่มี roomList · ใบเดิม = rooms × rate) */
+const roomRatesOf = (p) => (Array.isArray(p.roomList) && p.roomList.length ? p.roomList.map((r) => r.rate) : Array.from({ length: p.rooms || 1 }, () => p.rate || set().hotel));
+const nightCapOf = (p) => (p.nightCap != null ? p.nightCap : (p.rooms || 1) * (p.rate || set().hotel));
+/** "2 ห้อง (600 + 800 = 1,400/คืน)" · ห้องราคาเท่ากัน "2 ห้อง × 600" */
+const roomsLine = (rates) => rates.length > 1 && rates.some((x) => x !== rates[0]) ? `${rates.length} ห้อง (${rates.map(fmt).join(' + ')} = ${fmt(rates.reduce((t, x) => t + x, 0))}/คืน)` : `${rates.length} ห้อง × ${fmt(rates[0])}`;
+/** เหตุผลของห้องที่เกินเกณฑ์ (แผนใหม่) หรือ hotelReason (ใบเดิม) */
+const roomWhy = (p) => Array.isArray(p.roomList) ? p.roomList.map((r, i) => (r.over ? `ห้อง ${i + 1} ${fmt(r.rate)}: ${esc(r.why)}` : '')).filter(Boolean).join(' · ') : p.hotelOver && p.hotelReason ? esc(p.hotelReason) : '';
 /** รอบ 15: คืนที่ไม่เบิกค่าที่พัก (คืน = วันที่เข้าพัก go .. back-1) */
 function hotelSkipOf(f, nights) {
   if (f.hotelSkipOn === false || !f.go) return [];
@@ -736,11 +749,11 @@ const hotelSkipOut = (f, k) => ({ hotelSkip: k.skip, hotelSkipWhy: k.skip.length
 const skipText = (p) => (p.hotelSkip || []).length ? `ไม่เบิก ${p.hotelSkip.length} คืน (${p.hotelSkip.map((x) => dt(x)).join(', ')})${p.hotelSkipWhy ? ' · ' + esc(p.hotelSkipWhy) : ''}${p.hotelSkipRef ? ' · ' + esc(p.hotelSkipRef) : ''}` : '';
 function calcForm(f) {
   const s = set(), ddays = f.go && f.back && f.back >= f.go ? dayDiff(f.go, f.back) + 1 : 1, nights = Math.max(0, ddays - 1), people = 1 + f.travelerIds.filter((x) => x !== f.staffId).length;
-  const km = f.extNo && f.baseManual && !f.kmManual ? Math.round((f.baseKm + (f.kmCalc != null && f.baseCalc != null ? f.kmCalc - f.baseCalc : 0)) * 10) / 10 : f.kmManual || f.kmCalc == null ? Number(f.km) || 0 : f.kmCalc, skip = hotelSkipOf(f, nights), paidNights = nights - skip.length, rate = f.hotelOver && paidNights ? Number(f.hotelRate) || 0 : s.hotel, rooms = Math.max(1, Number(f.rooms) || 1);
+  const km = f.extNo && f.baseManual && !f.kmManual ? Math.round((f.baseKm + (f.kmCalc != null && f.baseCalc != null ? f.kmCalc - f.baseCalc : 0)) * 10) / 10 : f.kmManual || f.kmCalc == null ? Number(f.km) || 0 : f.kmCalc, skip = hotelSkipOf(f, nights), paidNights = nights - skip.length, roomRates = (f.roomList && f.roomList.length ? f.roomList : [{}]).map((r) => Number(r.rate) > 0 ? Number(r.rate) : s.hotel), rooms = roomRates.length, nightCap = roomRates.reduce((t, x) => t + x, 0), rate = nightCap / rooms, roomOver = roomRates.some((x) => x > s.hotel);
   const car = f.car || 'fuel', kmPer = car === 'ev' ? (s.kmPerKwh || 6) : s.kmPerL, price = car === 'ev' ? (Number(f.priceEv) || s.evPrice || 8) : car === 'none' ? 0 : (Number(f.price) || s.fuelPrice);
-  const fuel = car === 'none' ? 0 : Math.ceil(km / kmPer * price), allowance = people * ddays * s.allowance, hotel = paidNights * rooms * rate;
+  const fuel = car === 'none' ? 0 : Math.ceil(km / kmPer * price), allowance = people * ddays * s.allowance, hotel = paidNights * nightCap;
   const extras = f.extras.filter((e) => e.desc && Number(e.amount) > 0).reduce((t, e) => t + Number(e.amount), 0);
-  return { ddays, nights, paidNights, skip, people, km, rate, rooms, car, kmPer, price, fuel, allowance, hotel, extras, total: fuel + allowance + hotel + extras };
+  return { ddays, nights, paidNights, skip, people, km, rate, rooms, roomRates, nightCap, roomOver, car, kmPer, price, fuel, allowance, hotel, extras, total: fuel + allowance + hotel + extras };
 }
 let routeT = null, routeSeq = 0;
 function refreshRoute() {
@@ -773,7 +786,7 @@ function optBar(f) {
 }
 /** ฟอร์มต่อทริป: ใช้ฟอร์มขอเบิกเดิม แต่ล็อกของเดิมไว้ (สถานที่ ผู้เดินทาง ค่าใช้จ่ายอื่น วันไป) */
 function extForm(d) {
-  const f = newForm(d); f.editNo = null; f.extNo = d.no; f.lockN = d.stops.length; f.lockEx = (d.plan.extras || []).length; f.lockTrav = d.travelers.map((t) => t.id);
+  const f = newForm(d); f.editNo = null; f.extNo = d.no; f.lockN = d.stops.length; f.lockEx = (d.plan.extras || []).length; f.lockTrav = d.travelers.map((t) => t.id); f.lockRm = f.roomList.length;
   f.backMin = d.back; f.prevTotal = d.requested; f.note = ''; f.kmManual = false; f.kmAuto = true;
   // ระยะเดิมแก้เอง (ต่างจากที่ระบบคำนวณ) → ใช้ระยะเดิม + ระยะที่ระบบคำนวณเพิ่มจากสถานที่ใหม่
   f.baseKm = d.plan.km; f.baseCalc = d.kmCalc; f.baseManual = d.kmCalc != null && Math.abs(d.plan.km - d.kmCalc) >= 0.5; f.baseReason = d.kmReason || '';
@@ -805,8 +818,15 @@ function vReq() {
       ${f.extNo && f.baseManual && !f.kmManual ? `<p class="formula" style="margin:8px 0 0">ระยะเดิมแก้เองไว้ ${fmt(f.baseKm)} กม. (ระบบคำนวณเดิม ${fmt(f.baseCalc)}) · ใช้ระยะเดิม + ส่วนที่เพิ่มตามระบบ = <b>${fmt(calcForm(f).km)}</b> กม.</p>` : ''}
       ${f.kmManual || f.kmCalc == null ? `<div class="fgrid" style="margin-top:8px"><div class="field"><label for="f-km">ระยะทางไป-กลับ (กม.)</label><input class="inp num" type="number" inputmode="decimal" id="f-km" data-f="km" value="${esc(f.km)}"></div>
         <div class="field"><label for="f-kmr">เหตุผล${f.kmCalc != null && f.kmSrc !== 'est' ? ' <span style="color:var(--bad)">*</span>' : ' (ถ้ามี)'}</label><input class="inp" id="f-kmr" data-f="kmReason" value="${esc(f.kmReason)}" placeholder="${f.kmCalc != null ? 'เช่น ถนนปิด ต้องอ้อม' : 'เช่น วัดจากไมล์รถ'}"></div></div>` : ''}</div>`;
-  const hotel = k.nights ? `<div class="field full" id="hotelField"><label class="ckl"><input type="checkbox" id="f-hov" data-fchk="hotelOver" ${f.hotelOver ? 'checked' : ''}> ขอที่พักเกินอัตรา (${fmt(s.hotel)} บาท/ห้อง/คืน)</label>
-      ${f.hotelOver ? `<div class="hotelover"><div class="fgrid"><div class="field"><label for="f-hr">ราคาที่ขอ (บาท/ห้อง/คืน)</label><input class="inp num" type="number" id="f-hr" data-f="hotelRate" value="${esc(f.hotelRate)}">${Number(f.hotelRate) > s.hotelWarn ? `<span class="hint" style="color:var(--bad)">เกินยอดเตือน ${fmt(s.hotelWarn)}</span>` : ''}</div><div class="field"><label for="f-hre">เหตุผล</label><input class="inp" id="f-hre" data-f="hotelReason" value="${esc(f.hotelReason)}" placeholder="เช่น ใกล้หน้างาน ห้องอัตราปกติเต็ม"></div></div></div>` : ''}
+  // รอบ 18: รายการห้อง — แต่ละห้องใส่ราคาเอง (ว่าง = ตามเกณฑ์) · ห้องเกินเกณฑ์ต้องมีเหตุผล · ต่อทริปแก้ห้องเดิมไม่ได้ เพิ่มห้องได้
+  const rl = f.roomList && f.roomList.length ? f.roomList : (f.roomList = [{ rate: '', why: '' }]), lockRm = X ? (f.lockRm || 0) : 0;
+  const roomRow = (r, i) => { const over = Number(r.rate) > s.hotel;
+    if (i < lockRm) return `<div class="rmrow"><span class="rmno">ห้อง ${i + 1}</span><span class="rmlock num">${fmt(Number(r.rate) > 0 ? Number(r.rate) : s.hotel)} <small>บาท/คืน</small> <span class="pill p-mute">เดิม</span></span></div>`;
+    return `<div class="rmrow"><span class="rmno">ห้อง ${i + 1}</span><input class="inp num" type="number" inputmode="decimal" id="f-rm-${i}" data-rm="${i}:rate" value="${esc(r.rate)}" placeholder="${fmt(s.hotel)} (ตามเกณฑ์)" aria-label="ราคาห้อง ${i + 1} ต่อคืน"><span class="rmunit">บาท/คืน</span>${rl.length > 1 ? `<button class="xbtn" data-act="rmDel" data-v="${i}" aria-label="ลบห้อง ${i + 1}">${ms('close', 'style="font-size:18px"')}</button>` : '<span></span>'}
+      <div class="rmwhy" id="f-rmwb-${i}" ${over ? '' : 'hidden'}><input class="inp" id="f-rmw-${i}" data-rm="${i}:why" value="${esc(r.why || '')}" placeholder="เหตุผลที่ห้องนี้เกินเกณฑ์ * เช่น ห้องเตียงคู่เต็ม"><small class="rmwarn" id="f-rmx-${i}" ${Number(r.rate) > s.hotelWarn ? '' : 'hidden'}>เกินยอดเตือน ${fmt(s.hotelWarn)} บาท</small></div></div>`; };
+  const hotel = k.nights ? `<div class="field full" id="hotelField"><label>ห้องพัก <span style="font-weight:400;color:var(--sub)">· ตามเกณฑ์ ${fmt(s.hotel)} บาท/ห้อง/คืน · ไม่ใส่ราคา = ตามเกณฑ์</span></label>
+      <div class="rooms">${rl.map(roomRow).join('')}</div>
+      <div class="rmfoot"><button class="btn sm" data-act="rmAdd">${ms('add')}เพิ่มห้อง</button><span id="rmSum">รวม <b class="num">${fmt(k.nightCap)}</b> บาท/คืน · ${k.rooms} ห้อง</span></div>
       <label class="ckl" style="margin-top:8px"><input type="checkbox" id="f-hsk" data-fchk="hotelSkipOn" ${f.hotelSkipOn !== false && (f.hotelSkipOn || (f.hotelSkip || []).length) ? 'checked' : ''}> ไม่เบิกค่าที่พักบางคืน (เช่น ไปพักร่วมกับทีมทริปอื่น)</label>
       ${f.hotelSkipOn !== false && (f.hotelSkipOn || (f.hotelSkip || []).length) ? `<div class="hotelover"><div class="chips" id="f-hsd" style="margin-bottom:8px">${Array.from({ length: k.nights }, (_, i) => addDays(f.go, i)).map((x) => `<button type="button" class="chip ${k.skip.includes(x) ? 'on' : ''}" data-act="hskip" data-v="${x}">${k.skip.includes(x) ? ms('block', 'style="font-size:15px;vertical-align:-3px"') : ''}คืน ${dt(x)}</button>`).join('')}</div>
         <small style="color:var(--sub);display:block;margin-bottom:8px">แตะคืนที่ <b>ไม่เบิก</b> · เบิกค่าที่พัก ${k.paidNights} คืน${k.skip.length ? ` · ไม่เบิก ${k.skip.length} คืน` : ''}</small>
@@ -819,14 +839,13 @@ function vReq() {
       <div class="field"><label for="f-go">วันไป</label><input class="inp" type="date" id="f-go" data-f="go" value="${f.go}" ${X ? 'readonly' : ''}></div>
       <div class="field"><label for="f-back">วันกลับ${X ? ' (ขยายได้)' : ''}</label><input class="inp" type="date" id="f-back" data-f="back" value="${f.back}" ${X ? `min="${f.backMin}"` : ''}></div>
       ${stops}${kmBox}${carBox(f, k)}
-      <div class="field"><label for="f-rooms">จำนวนห้องต่อคืน</label><input class="inp num" type="number" inputmode="numeric" id="f-rooms" data-f="rooms" value="${esc(f.rooms)}"></div>
       ${hotel || '<div id="hotelField" hidden></div>'}${extras}
       <div class="field full"><label>อัตราที่ใช้ ${ms('lock', 'style="font-size:15px;vertical-align:-3px"')} <span style="font-weight:400">ตั้งโดย admin</span></label><div class="lockrates">${(f.car || 'fuel') === 'ev' ? `<span>รถไฟฟ้าวิ่งได้</span><b>${s.kmPerKwh || 6} กม./kWh</b><span>ค่าไฟชาร์จ</span><b>${f.priceEv} บาท/kWh</b>` : (f.car || 'fuel') === 'fuel' ? `<span>อัตราสิ้นเปลือง</span><b>${s.kmPerL} กม./ลิตร</b><span>ราคาน้ำมัน</span><b>${f.price} บาท/ลิตร</b>` : ''}<span>เบี้ยเลี้ยง</span><b>${fmt(s.allowance)} บาท/คน/วัน</b><span>ที่พัก</span><b>${fmt(s.hotel)} บาท/ห้อง/คืน</b></div></div>
     </div></div>
     <div class="card calc"><div id="calcBody"><h3>${ms('calculate')}ยอดที่ขอเบิก<span class="r">${k.ddays} วัน ${k.nights} คืน · ${k.people} คน</span></h3><div class="lines">
       ${carRow({ car: k.car, km: k.km, kmPer: k.kmPer, price: k.price, carWhy: f.carWhy, fuel: k.fuel }, s)}
       <div><span>เบี้ยเลี้ยง<br><span class="f">${k.people} คน × ${k.ddays} วัน × ${fmt(s.allowance)}</span></span><b>${fmt(k.allowance)}</b></div>
-      <div><span>ที่พัก<br><span class="f">${k.paidNights} คืน × ${k.rooms} ห้อง × ${fmt(k.rate)}${f.hotelOver && k.paidNights ? ' <span class="overpill">เกินอัตรา</span>' : ''}${k.skip.length ? `<br>ไม่เบิก ${k.skip.length} คืน` : ''}</span></span><b>${fmt(k.hotel)}</b></div>
+      <div><span>ที่พัก<br><span class="f">${k.paidNights} คืน × ${roomsLine(k.roomRates)}${k.roomOver && k.paidNights ? ' <span class="overpill">มีห้องเกินเกณฑ์</span>' : ''}${k.skip.length ? `<br>ไม่เบิก ${k.skip.length} คืน` : ''}</span></span><b>${fmt(k.hotel)}</b></div>
       ${k.extras ? `<div><span>ค่าใช้จ่ายอื่น</span><b>${fmt(k.extras)}</b></div>` : ''}</div>
       ${X ? `<div class="lines" style="margin-top:8px"><div><span>ยอดใหม่ทั้งทริป</span><b>${fmt(k.total)}</b></div><div><span>หัก ยอดที่ได้รับแล้ว</span><b>−${fmt(f.prevTotal)}</b></div></div><div class="diffbox ${k.total - f.prevTotal > 0 ? 'topup' : 'even'}" style="margin:12px 0 14px"><span>ขอเงินเพิ่ม (ต่อทริป)</span><b>${fmt(Math.max(0, k.total - f.prevTotal))} บาท</b></div>${k.total < f.prevTotal ? '<p class="formula" style="color:var(--bad);margin:0 0 10px">ยอดใหม่น้อยกว่าเดิม · ต่อทริปใช้เพิ่มรายการเท่านั้น</p>' : ''}</div>
       <div class="field" style="margin-bottom:10px"><label for="f-note">เหตุผลที่ต่อทริป</label><input class="inp" id="f-note" data-f="note" value="${esc(f.note || '')}" placeholder="เช่น ลูกค้าขอให้แวะอีกโรงสี"></div>` : `<div style="display:flex;justify-content:space-between;align-items:baseline;margin:12px 0 14px"><span>รวม</span><span class="big">${fmt(k.total)}</span></div></div>`}
@@ -845,7 +864,7 @@ function drawDoc(no) {
   ST.openNo = no; const p = d.plan, me = ST.me.id, lead = d.staffId === me, s = set();
   const lines = `<div class="lines">${carRow(p, s)}
       <div><span>เบี้ยเลี้ยง<br><span class="f">${p.people} คน × ${p.days} วัน</span></span><b>${fmt(p.allowance)}</b></div>
-      <div><span>ที่พัก<br><span class="f">${p.paidNights != null ? p.paidNights : p.nights} คืน × ${p.rooms} ห้อง × ${fmt(p.rate)}${p.hotelOver ? ` <span class="overpill">เกินอัตรา</span><br>เหตุผล: ${esc(p.hotelReason)}` : ''}${skipText(p) ? `<br>${skipText(p)}` : ''}</span></span><b>${fmt(p.hotel)}</b></div>
+      <div><span>ที่พัก<br><span class="f">${p.paidNights != null ? p.paidNights : p.nights} คืน × ${roomsLine(roomRatesOf(p))}${p.hotelOver || (p.roomList || []).some((r) => r.over) ? ' <span class="overpill">เกินเกณฑ์</span>' : ''}${roomWhy(p) ? `<br>${roomWhy(p)}` : ''}${skipText(p) ? `<br>${skipText(p)}` : ''}</span></span><b>${fmt(p.hotel)}</b></div>
       ${(p.extras || []).map((e) => `<div><span>${esc(e.desc)}<br><span class="f">${esc(e.cat)}</span></span><b>${fmt(e.amount)}</b></div>`).join('')}
       <div class="tot"><span>ยอดเบิก</span><b>${fmt(d.requested)}</b></div></div>`;
   const km = d.kmCalc != null && d.kmSrc === 'est' ? `<div class="banner warn">${ms('route')}<span>ระยะทางประมาณจากเส้นตรง ${fmt(d.kmCalc)} กม. (บริการแผนที่ใช้ไม่ได้ตอนส่ง) · ขอ <b>${fmt(p.km)}</b> กม.${d.kmReason ? ` · ${esc(d.kmReason)}` : ''} · ตรวจก่อนอนุมัติ</span></div>` : d.kmCalc != null ? (d.kmReason ? `<div class="banner warn">${ms('route')}<span>ระบบคำนวณ <b>${fmt(d.kmCalc)}</b> กม. · ขอ <b>${fmt(p.km)}</b> กม. · เหตุผล: ${esc(d.kmReason)}</span></div>` : '') : `<div class="banner info">${ms('route')}<span>ระยะทางกรอกเอง ${fmt(p.km)} กม.${d.kmReason ? ` · ${esc(d.kmReason)}` : ''}</span></div>`;
@@ -1061,7 +1080,7 @@ function clrFromPre(d) {
     ex: (a.extras || []).map((e) => ({ amount: e.actual, file: e.file || null, noRcpt: !e.file, why: e.why || '' })), hotelEx: !!a.hotelExApproved, exOver: !!a.exOverApproved };
 }
 function clrCalc(d, k) {
-  const s = set(), p = d.plan, allowance = (Number(k.people) || 0) * (Number(k.days) || 0) * s.allowance, cap = (p.rooms || 1) * (p.rate || s.hotel);
+  const s = set(), p = d.plan, allowance = (Number(k.people) || 0) * (Number(k.days) || 0) * s.allowance, cap = nightCapOf(p);
   const m = new Map(); let err = '';
   k.stays.forEach((st) => { if (!st.from || !st.to || st.to < st.from) { err = 'วันที่ที่พักไม่ถูกต้อง'; return; } if (st.from < d.go || st.to > d.back) { err = 'วันที่ที่พักต้องอยู่ในช่วงทริป'; return; } if (st.rate === '' || st.rate == null) { err = 'ใส่ราคาที่พักให้ครบทุกช่วง'; return; } for (let i = 0; i <= dayDiff(st.from, st.to); i++) { const x = addDays(st.from, i); m.set(x, (m.get(x) || 0) + (Number(st.rate) || 0)); } });
   // รอบ 11: วันซ้ำได้ (พักหลายห้อง) · ช่วงที่ครอบคืนที่รวมแล้วเกินเพดาน ต้องมีเหตุผล+ใบเสร็จ
@@ -1107,7 +1126,7 @@ function vClr() {
   const pre = !!ST.clrPre && isAdmin(); const d = doc(ST.clrNo); if (!d || !(d.status === 'open' || (isAdmin() && d.status === 'clearSub') || (pre && d.status === 'approve')) || (!isAdmin() && d.staffId !== ST.me.id)) { ST.view = isAdmin() ? 'clear' : 'home'; return isAdmin() ? vClearList() : vMyTrips(); }
   const k = ST.clr || (ST.clr = newClr(d)); const r = clrCalc(d, k), diff = r.total - r.othersAmt - d.requested, s = set();
   const adminRev = isAdmin();
-  const stays = `<div class="field full"><label>ที่พัก (ตามจริง · กรอกเป็นช่วงวันที่) · อนุมัติไว้ ${fmt(d.plan.rate)} × ${d.plan.rooms} ห้อง/คืน${(d.plan.hotelSkip || []).length ? ` · <span style="color:var(--warn)">ไม่เบิกคืน ${d.plan.hotelSkip.map((x) => dt(x)).join(', ')}</span>` : ''}</label><div class="items">${k.stays.map((st, i) => `<div class="stay"><div class="sd"><input class="inp" type="date" id="st-f-${i}" data-st="${i}:from" value="${st.from}" min="${d.go}" max="${d.back}" aria-label="ตั้งแต่"><span>ถึง</span><input class="inp" type="date" id="st-t-${i}" data-st="${i}:to" value="${st.to}" min="${d.go}" max="${d.back}" aria-label="ถึง"></div><div class="sr"><input class="inp num" type="number" id="st-r-${i}" data-st="${i}:rate" value="${esc(st.rate)}" placeholder="บาท/คืน" aria-label="ราคาต่อคืน"><button class="xbtn" data-act="stayDel" data-v="${i}" aria-label="ลบช่วง">${ms('close', 'style="font-size:18px"')}</button></div>${whoSel(d, 'st', i, st.by)}<div class="stover" id="st-ov-${i}" ${r.stayOver[i] ? '' : 'hidden'}><div class="banner warn">${ms('hotel')}<span>ค่าที่พักต่อคืน (รวมทุกห้องในคืนเดียวกัน) เกินเกณฑ์ ${fmt(r.cap)} บาท · <b>ใส่เหตุผลและแนบใบเสร็จ</b> admin เป็นผู้ตัดสินส่วนเกิน</span></div><input class="inp" id="st-w-${i}" data-st="${i}:why" value="${esc(st.why || '')}" placeholder="เหตุผลที่เกิน * เช่น โรงแรมใกล้หน้างานเต็ม"><div class="rc">${st.file ? `<span class="hint">${ms('check_circle', 'style="font-size:15px;vertical-align:-3px;color:var(--good)"')} ใบเสร็จที่พัก ${fileBtn(st.file, 'ดู')}</span>` : ''}${fileIn(st.file, `st-file-${i}`, `data-stf="${i}"`, `ใบเสร็จที่พัก ช่วงที่ ${i + 1}`)}</div></div></div>`).join('')}
+  const stays = `<div class="field full"><label>ที่พัก (ตามจริง · กรอกเป็นช่วงวันที่ · หลายห้องคืนเดียวกันกรอกแยกช่วงได้) · อนุมัติไว้ ${roomsLine(roomRatesOf(d.plan))}${(d.plan.hotelSkip || []).length ? ` · <span style="color:var(--warn)">ไม่เบิกคืน ${d.plan.hotelSkip.map((x) => dt(x)).join(', ')}</span>` : ''}</label><div class="items">${k.stays.map((st, i) => `<div class="stay"><div class="sd"><input class="inp" type="date" id="st-f-${i}" data-st="${i}:from" value="${st.from}" min="${d.go}" max="${d.back}" aria-label="ตั้งแต่"><span>ถึง</span><input class="inp" type="date" id="st-t-${i}" data-st="${i}:to" value="${st.to}" min="${d.go}" max="${d.back}" aria-label="ถึง"></div><div class="sr"><input class="inp num" type="number" id="st-r-${i}" data-st="${i}:rate" value="${esc(st.rate)}" placeholder="บาท/คืน" aria-label="ราคาต่อคืน"><button class="xbtn" data-act="stayDel" data-v="${i}" aria-label="ลบช่วง">${ms('close', 'style="font-size:18px"')}</button></div>${whoSel(d, 'st', i, st.by)}<div class="stover" id="st-ov-${i}" ${r.stayOver[i] ? '' : 'hidden'}><div class="banner warn">${ms('hotel')}<span>ค่าที่พักต่อคืน (รวมทุกห้องในคืนเดียวกัน) เกินเกณฑ์ ${fmt(r.cap)} บาท · <b>ใส่เหตุผลและแนบใบเสร็จ</b> admin เป็นผู้ตัดสินส่วนเกิน</span></div><input class="inp" id="st-w-${i}" data-st="${i}:why" value="${esc(st.why || '')}" placeholder="เหตุผลที่เกิน * เช่น โรงแรมใกล้หน้างานเต็ม"><div class="rc">${st.file ? `<span class="hint">${ms('check_circle', 'style="font-size:15px;vertical-align:-3px;color:var(--good)"')} ใบเสร็จที่พัก ${fileBtn(st.file, 'ดู')}</span>` : ''}${fileIn(st.file, `st-file-${i}`, `data-stf="${i}"`, `ใบเสร็จที่พัก ช่วงที่ ${i + 1}`)}</div></div></div>`).join('')}
       <button class="btn sm" style="align-self:flex-start" data-act="stayAdd">${ms('add')}เพิ่มช่วงที่พัก</button></div>
       ${r.hotelExcess > 0 ? (adminRev ? `<label class="ckl excheck"><input type="checkbox" id="c-hex" data-cchk="hotelEx" ${k.hotelEx ? 'checked' : ''}> อนุมัติส่วนเกินที่พัก <b>${fmt(r.hotelExcess)}</b> บาท (เอาติ๊กออก = จ่ายไม่เกิน ${fmt(r.cap)}/คืน)</label>` : `<div class="banner info" style="margin-top:8px">${ms('hotel')}<span>นับยอดที่พักเต็มตามจริงแล้ว · ส่วนเกิน <b>${fmt(r.hotelExcess)}</b> บาท รอ admin อนุมัติ</span></div>`) : ''}</div>`;
   const ex = r.ex.length ? `<div class="field full"><label>ค่าใช้จ่ายอื่นที่ขอไว้ · ใส่ยอดจริงและแนบใบเสร็จทุกรายการ</label><div class="items">${r.ex.map((e, i) => { const x = k.ex[i];
@@ -1359,7 +1378,7 @@ function detailOf(x, d, pcr, idx) {
   if (d.type === 'TRV') { const p = d.plan, s = set();
     return `<div class="item">${head()}${pay}${kv([['ชื่องาน', `<b>${esc(d.title)}</b>`], ['วันที่', `${thDate(d.go)}${d.back !== d.go ? ' – ' + thDate(d.back) : ''} (${p.days} วัน ${p.nights} คืน)`], ['เส้นทางการเดินทาง', route(d.stops)], ['ชื่อผู้เดินทาง', people(d)], (d.plan || p0Of(d)).veh ? ['ยานพาหนะ', esc(vehTextPlain(d.plan))] : null, d.kmReason ? ['หมายเหตุระยะทาง', esc(d.kmReason)] : null])}
       ${(() => { const c = carText(p, s); return row(c[0], c[1], p.fuel); })()}${row('ค่าเบี้ยเลี้ยง', `${p.people} คน × ${p.days} วัน × ${fmt(s.allowance)}`, p.allowance)}
-      ${p.nights ? row('ค่าที่พัก', `${p.paidNights != null ? p.paidNights : p.nights} คืน × ${p.rooms} ห้อง × ${fmt(p.rate)}${p.hotelOver ? ` <span class="cat">(เกินอัตรา ${fmt(s.hotel)})</span>` : ''}`, p.hotel, [p.hotelOver && p.hotelReason ? `เหตุผล: ${esc(p.hotelReason)}` : '', skipText(p)].filter(Boolean).join(' · ')) : ''}
+      ${p.nights ? row('ค่าที่พัก', `${p.paidNights != null ? p.paidNights : p.nights} คืน × ${roomsLine(roomRatesOf(p))}${p.hotelOver || (p.roomList || []).some((r) => r.over) ? ` <span class="cat">(เกณฑ์ ${fmt(s.hotel)}/ห้อง)</span>` : ''}`, p.hotel, [roomWhy(p) ? `เหตุผล: ${roomWhy(p)}` : '', skipText(p)].filter(Boolean).join(' · ')) : ''}
       ${(p.extras || []).map((e) => row(esc(e.cat), esc(e.desc), e.amount)).join('')}${sum(x.amount)}</div>`; }
   if (d.type === 'ADV') return `<div class="item">${head()}${pay}${kv([['เรื่อง', `<b>${esc(d.title)}</b>`], d.customer ? ['ลูกค้า', esc(d.customer)] : null, ['วันที่', thDate(d.go)]])}${d.items.map((i) => row('', esc(i.desc), i.amount)).join('')}${sum(x.amount)}<div class="xnote" style="margin:6px 0 0">หลังใช้จริง ทีมงานต้องเคลียร์ด้วยใบเสร็จภายใน ${set().clearDue} วัน</div></div>`;
   return `<div class="item">${head()}${pay}${kv([['รายการ', `<b>${esc(d.title)}</b>`], d.cat ? ['หมวด', esc(d.cat)] : null, ['วันที่', thDate(d.go)], ['หลักฐาน', docFiles(d).length ? `แนบใบเสร็จ/ใบแจ้งหนี้ในระบบแล้ว ${docFiles(d).length} ไฟล์` : 'ยังไม่มีไฟล์แนบในระบบ (แนบภายหลังได้)']])}${row('', esc(d.title), d.requested)}${sum(x.amount)}</div>`;
@@ -2247,6 +2266,8 @@ async function trvClick(a, v, b) {
   if (a === 'optUndo' && f.prevOrder) { f.stops = f.prevOrder.stops; f.geo = f.prevOrder.geo; f.prevOrder = null; f.optApplied = null; f.legs = null; render(); refreshRoute(); return true; }
   if (a === 'stopAdd') { f.optApplied = null; f.stops.push(''); f.geo.push(null); render(); document.getElementById(`f-stop-${f.stops.length - 1}`)?.focus(); return true; }
   if (a === 'stopDel') { f.optApplied = null; f.stops.splice(+v, 1); f.geo.splice(+v, 1); f.legs = null; render(); refreshRoute(); return true; }
+  if (a === 'rmAdd') { if ((f.roomList || []).length >= 20) { toast('สูงสุด 20 ห้อง', 'error'); return true; } f.roomList.push({ rate: '', why: '' }); render(); document.getElementById(`f-rm-${f.roomList.length - 1}`)?.focus(); return true; }
+  if (a === 'rmDel') { if (+v < (f.lockRm || 0) || f.roomList.length <= 1) return true; f.roomList.splice(+v, 1); render(); return true; }
   if (a === 'hskip') { const s = new Set(f.hotelSkip || []); if (s.has(v)) s.delete(v); else s.add(v); f.hotelSkip = [...s].sort(); render(); return true; }
   if (a === 'exAdd') { f.extras.push({ cat: ST.settings.cats[0] || 'อื่นๆ', desc: '', amount: '' }); render(); return true; }
   if (a === 'exDel') { f.extras.splice(+v, 1); render(); return true; }
@@ -2255,7 +2276,7 @@ async function trvClick(a, v, b) {
     const chk = [['#f-title', 'ชื่องาน'], ['#f-go', 'วันไป'], ['#f-back', 'วันกลับ', (x) => !x ? 'ใส่วันกลับ' : x < f.go ? 'วันกลับต้องไม่ก่อนวันไป' : ''], ['#f-stop-0', 'สถานที่', () => f.stops.some((x) => x.trim()) ? '' : 'เพิ่มสถานที่อย่างน้อย 1 แห่ง']];
     if (!(k.km > 0)) chk.push([$('#f-km') || '#f-stop-0', 'ระยะทาง', () => 'ใส่ระยะทางไป-กลับ']);
     if (f.kmManual && f.kmCalc != null && f.kmSrc !== 'est' && Math.abs(k.km - f.kmCalc) >= 0.5) chk.push(['#f-kmr', 'เหตุผลที่แก้ระยะทาง']);
-    if (f.hotelOver && k.paidNights) chk.push(['#f-hr', 'ราคาที่พักต่อคืน', vMoney], ['#f-hre', 'เหตุผลที่พักเกินอัตรา']);
+    if (k.paidNights) (f.roomList || []).forEach((r, i) => { if (i >= (f.lockRm || 0) && Number(r.rate) > set().hotel) chk.push([`#f-rmw-${i}`, `เหตุผลที่ห้อง ${i + 1} เกินเกณฑ์`]); });
     if (k.skip.length) chk.push(['#f-hsw', 'เหตุผลที่ไม่เบิกค่าที่พัก']);
     if (!f.extNo) chk.push(['#vehPick', 'รถที่ใช้', () => f.veh && f.veh.mode ? '' : 'เลือกรถที่ใช้']);
     if (!f.extNo && f.veh && f.veh.mode === 'own') chk.push(['#f-vplate', 'ทะเบียนรถ']);
@@ -2267,13 +2288,13 @@ async function trvClick(a, v, b) {
     if (f.extNo) {
       if (k.total <= f.prevTotal && f.stops.filter((x) => x.trim()).length === f.lockN && f.back === f.backMin) { toast('กรอกข้อมูลไม่ครบ: เพิ่มสถานที่ ขยายวันกลับ เพิ่มคน หรือเพิ่มค่าใช้จ่าย', 'error'); return true; }
       await busy(b, async () => {
-        const form = { stops: f.stops.map((x) => x.trim()).filter(Boolean), geo: f.stops.map((x, i) => (x.trim() ? f.geo[i] || null : undefined)).filter((g) => g !== undefined), back: f.back, travelerIds: f.travelerIds, km: k.km, kmReason: f.kmManual || f.kmCalc == null ? f.kmReason : f.baseManual ? `${f.baseReason || 'ระยะเดิมแก้เอง'} · ต่อทริป: ระยะเดิม ${fmt(f.baseKm)} + ส่วนเพิ่มตามระบบ ${fmt(k.km - f.baseKm)} กม.` : '', extras: f.extras.slice(f.lockEx), rooms: f.rooms, hotelOver: f.hotelOver, hotelRate: f.hotelRate, hotelReason: f.hotelReason, ...hotelSkipOut(f, k), note: f.note };
+        const form = { stops: f.stops.map((x) => x.trim()).filter(Boolean), geo: f.stops.map((x, i) => (x.trim() ? f.geo[i] || null : undefined)).filter((g) => g !== undefined), back: f.back, travelerIds: f.travelerIds, km: k.km, kmReason: f.kmManual || f.kmCalc == null ? f.kmReason : f.baseManual ? `${f.baseReason || 'ระยะเดิมแก้เอง'} · ต่อทริป: ระยะเดิม ${fmt(f.baseKm)} + ส่วนเพิ่มตามระบบ ${fmt(k.km - f.baseKm)} กม.` : '', extras: f.extras.slice(f.lockEx), ...roomsOut(f), ...hotelSkipOut(f, k), note: f.note };
         const no = f.extNo, r = await api('trvExtend', { no, form }); ST.form = null; await reloadTrv(); ST.view = isAdmin() ? 'clear' : 'home'; render(); drawDoc(no); toast(`ส่งคำขอต่อทริป ${no} แล้ว · ขอเพิ่ม ${fmt(r.amount)} บาท`);
       });
       return true;
     }
     await busy(b, async () => {
-      const form = { editNo: f.editNo, staffId: f.staffId, travelerIds: f.travelerIds, title: f.title, go: f.go, back: f.back, stops: f.stops.map((x) => x.trim()).filter(Boolean), geo: f.stops.map((x, i) => (x.trim() ? f.geo[i] || null : undefined)).filter((g) => g !== undefined), km: k.km, kmReason: f.kmManual || f.kmCalc == null ? f.kmReason : '', rooms: f.rooms, hotelOver: f.hotelOver, hotelRate: f.hotelRate, hotelReason: f.hotelReason, ...hotelSkipOut(f, k), extras: f.extras, car: f.car || 'fuel', carWhy: f.car === 'none' ? f.carWhy : '', price: f.car === 'ev' ? f.priceEv : f.price, veh: f.veh && f.veh.mode ? { mode: f.veh.mode, id: f.veh.id, plate: f.veh.plate, prov: f.veh.prov } : null };
+      const form = { editNo: f.editNo, staffId: f.staffId, travelerIds: f.travelerIds, title: f.title, go: f.go, back: f.back, stops: f.stops.map((x) => x.trim()).filter(Boolean), geo: f.stops.map((x, i) => (x.trim() ? f.geo[i] || null : undefined)).filter((g) => g !== undefined), km: k.km, kmReason: f.kmManual || f.kmCalc == null ? f.kmReason : '', ...roomsOut(f), ...hotelSkipOut(f, k), extras: f.extras, car: f.car || 'fuel', carWhy: f.car === 'none' ? f.carWhy : '', price: f.car === 'ev' ? f.priceEv : f.price, veh: f.veh && f.veh.mode ? { mode: f.veh.mode, id: f.veh.id, plate: f.veh.plate, prov: f.veh.prov } : null };
       const r = await api('trvSubmit', { form }); ST.form = null; await reloadTrv();
       ST.view = isAdmin() ? 'inbox' : 'home'; render(); toast(form.editNo ? `บันทึก ${r.no} แล้ว` : `ส่งคำขอ ${r.no} แล้ว · รอ admin อนุมัติ`); if (isAdmin()) drawDoc(r.no);
     });
@@ -2414,6 +2435,11 @@ document.addEventListener('input', (e) => {
   if (ST.form && el.dataset.stop !== undefined) { const i = +el.dataset.stop; ST.form.stops[i] = el.value; ST.form.geo[i] = null; ST.form.optApplied = null; el.parentElement.querySelector('.ta-ok')?.remove(); taInput(el, String(i)); return; }
   if (el.id === 'cust-q') { taInput(el, 'cust'); return; }
   if (ST.form && el.dataset.ex) { const [i, key] = el.dataset.ex.split(':'); ST.form.extras[+i][key] = el.value; if (key === 'amount') updCalc(); return; }
+  if (ST.form && el.dataset.rm) { // รอบ 18: ราคาห้อง → โชว์ช่องเหตุผลเมื่อเกินเกณฑ์ · อัปเดตยอดรวมต่อคืน
+    const [i, key] = el.dataset.rm.split(':'), r = ST.form.roomList[+i]; if (!r) return; r[key] = el.value;
+    if (key === 'rate') { const s = set(), v = Number(el.value); $(`#f-rmwb-${i}`)?.toggleAttribute('hidden', !(v > s.hotel)); $(`#f-rmx-${i}`)?.toggleAttribute('hidden', !(v > s.hotelWarn));
+      const k = calcForm(ST.form), sum = $('#rmSum'); if (sum) sum.innerHTML = `รวม <b class="num">${fmt(k.nightCap)}</b> บาท/คืน · ${k.rooms} ห้อง`; updCalc(); }
+    return; }
   if (el.dataset.nf && ST.nf) { ST.nf[el.dataset.nf] = el.value; if (el.dataset.nf === 'amount') { const t = $('#nfTot'); if (t) t.textContent = fmt(Number(el.value) || 0); } return; }
   if (el.dataset.nfi && ST.nf) { const [i, key] = el.dataset.nfi.split(':'); ST.nf.items[+i][key] = el.value; const t = $('#nfTot'); if (t) t.textContent = fmt(ST.nf.items.reduce((x, y) => x + (Number(y.amount) || 0), 0)); const c = $('#nfCnt'); if (c) c.textContent = `${ST.nf.items.filter((y) => y.desc.trim() && Number(y.amount) > 0).length} รายการ`; return; }
   if (el.dataset.ac && ST.ac) { const [i, key] = el.dataset.ac.split(':'); ST.ac.receipts[+i][key] = el.value; if (key === 'amount') { const c = $('#acCalc'); if (c) c.innerHTML = advCalcHtml(doc(ST.advNo), ST.ac); } return; }
@@ -3072,7 +3098,8 @@ function bellHtml(setOpen) {
   const B = ST.bell, opts = PUSH_OPTS[ST.me.role] || PUSH_OPTS.user;
   const list = B.items.map((x) => `<div class="drow bitem ${x.read ? '' : 'unread'}"><button class="bgo" data-act="bellGo" data-v="${esc(x.id)}"><span class="dic">${ms(bellIcon(x.kind))}</span><span class="btx"><b>${esc(x.title)}</b>${x.body ? `<small>${esc(x.body)}</small>` : ''}<small>${dtTime(x.at)}</small></span></button><button class="btn sm ghost" data-act="bellDel" data-v="${esc(x.id)}" aria-label="ลบแจ้งเตือนนี้" title="ลบ">${ms('close')}</button></div>`).join('') || '<div class="empty">ยังไม่มีแจ้งเตือน</div>';
   const prefs = opts.map(([k, i, t]) => `<label class="drow prow"><span class="dic">${ms(i)}</span><span style="flex:1;min-width:0"><b>${t}</b></span><input type="checkbox" class="pswitch" data-bpk="${k}" ${B.prefs[k] !== false ? 'checked' : ''} aria-label="แสดง${t}ในกระดิ่ง"></label>`).join('');
-  return `<div class="dh bellh"><h2>การแจ้งเตือน</h2>${B.unread ? `<button class="btn sm ghost" style="margin-left:auto" data-act="bellAll">${ms('done_all')}อ่านทั้งหมด</button>` : ''}<button class="btn sm ghost x" data-act="closeDrawer" aria-label="ปิด">${ms('close')}</button></div>
+  const hasRead = B.items.some((x) => x.read);
+  return `<div class="dh bellh"><h2>การแจ้งเตือน</h2><span style="margin-left:auto;display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end">${B.unread ? `<button class="btn sm ghost" data-act="bellAll">${ms('done_all')}อ่านทั้งหมด</button>` : ''}${hasRead ? `<button class="btn sm ghost" data-act="bellClear" title="ลบแจ้งเตือนที่อ่านแล้วทั้งหมด">${ms('delete_sweep')}ล้างที่อ่านแล้ว</button>` : ''}</span><button class="btn sm ghost x" data-act="closeDrawer" aria-label="ปิด">${ms('close')}</button></div>
     <div class="db"><div>${list}</div><details class="bset" ${setOpen ? 'open' : ''}><summary>${ms('tune')}เลือกเรื่องที่แสดงในกระดิ่ง</summary>${prefs}<p class="formula">ปิดแล้ว เรื่องนั้นจะไม่เข้ากระดิ่ง · ไม่กระทบแจ้งเตือนบนมือถือ (ตั้งค่าที่หน้าโปรไฟล์)</p></details></div>`;
 }
 document.addEventListener('click', async (e) => {
@@ -3087,6 +3114,11 @@ document.addEventListener('click', async (e) => {
       if (/[?&](open|apv|view)=/.test(x.url)) deepLink(x.url); else closeDrawer();
     }
     else if (a === 'bellDel') { B.items = B.items.filter((i) => i.id !== id); paintBell(); B.unread = (await api('bellDel', { id })).unread; paintBell(); }
+    else if (a === 'bellClear') {
+      const keep = B.items.filter((i) => !i.read); B.items = keep; paintBell();
+      const r = await api('bellClearRead', {}); B.unread = r.unread; Object.assign(B, await api('bellList')); paintBell();
+      toast(r.removed ? `ล้างแจ้งเตือนที่อ่านแล้ว ${r.removed} รายการ` : 'ไม่มีแจ้งเตือนที่อ่านแล้ว', 'delete_sweep');
+    }
     else if (a === 'bellAll') { B.items.forEach((i) => { i.read = true; }); B.unread = 0; paintBell(); B.unread = (await api('bellRead', {})).unread; paintBell(); }
   } catch (err) { fail(err); }
 });
