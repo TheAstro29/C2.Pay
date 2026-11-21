@@ -1051,21 +1051,47 @@ function whoSel(d, kind, i, cur) {
   const v = cur && T.some((t) => t.id === cur) ? cur : d.staffId;
   return `<label class="payer" for="by-${kind}-${i}">${ms('person', 'style="font-size:17px"')}<span>คนจ่าย</span><select class="sel" id="by-${kind}-${i}" data-by="${kind}:${i}">${T.map((t) => `<option value="${esc(t.id)}" ${t.id === v ? 'selected' : ''}>${esc(t.name)}${t.id === d.staffId ? ' (ผู้รับเงิน)' : ''}</option>`).join('')}</select></label>`;
 }
+// ===== รอบ 19: หน้าเคลียร์แบบหมวด — การ์ดมีเลข + ยอดย่อย · แต่ละรายการเป็นกล่อง ยุบได้ (แตะหัวรายการ) =====
+function csec(n, icon, title, sub, key, total, body) {
+  return `<section class="csec"><header class="csh"><span class="cnum">${n}</span><div class="cst"><b>${ms(icon)}${title}</b>${sub ? `<small>${sub}</small>` : ''}</div>${total != null ? `<b class="csub num" id="cs-${key}" data-live>${fmt(total)}</b>` : ''}</header><div class="csb">${body}</div></section>`;
+}
+const rcOk = (x) => !!x.file || !!(x.noRcpt && String(x.why || '').trim());
+const rcTag = (x, word) => x.file ? `<span class="ctag ok">${ms('check')}${word}แล้ว</span>` : rcOk(x) ? `<span class="ctag">ไม่มี${word}</span>` : `<span class="ctag warn">ยังไม่แนบ${word}</span>`;
+const payTag = (d, by) => { const T = (d && d.travelers) || []; if (T.length < 2) return ''; const t = T.find((x) => x.id === by) || T.find((x) => x.id === d.staffId); return t ? `<span class="ctag">จ่าย: ${esc(String(t.name).split(' ')[0])}</span>` : ''; };
+/** กล่องรายการ: เปิด = ช่องกรอก · ยุบ = บรรทัดสรุป + ป้ายสถานะ (ข้อมูลเดิมยังอยู่ครบ ตรวจจากข้อมูล ไม่ใช่จากช่องกรอก) */
+function crow(key, i, summary, tags, body) {
+  const closed = !!(ST.clrUi && ST.clrUi.closed.has(key));
+  return `<div class="crow ${closed ? '' : 'open'}"><button type="button" class="crh" data-act="crow" data-v="${key}" aria-expanded="${!closed}"><span class="cri">${i + 1}</span><span class="crs">${closed ? summary : 'กำลังแก้ไข · แตะเพื่อยุบ'}</span><span class="crt">${tags}</span>${ms(closed ? 'expand_more' : 'expand_less', 'class="crx"')}</button>${closed ? '' : `<div class="crb">${body}</div>`}</div>`;
+}
+/** รายการที่กรอกครบแล้ว (ยุบไว้ตอนเปิดหน้า) */
+function clrDone(d, k, r) {
+  const out = [], loose = d.plan.car === 'ev' || d.plan.car === 'none';
+  (k.fuels || []).forEach((f, i) => { if (f.date && Number(f.amount) > 0 && (loose || Number(f.qty) > 0) && rcOk(f)) out.push(`fu:${i}`); });
+  k.stays.forEach((s, i) => { if (s.from && s.to && s.rate !== '' && s.rate != null && (!r.stayOver[i] || (String(s.why || '').trim() && s.file))) out.push(`st:${i}`); });
+  (k.ex || []).forEach((x, i) => { if (x.amount !== '' && x.amount != null && rcOk(x)) out.push(`xc:${i}`); });
+  (k.add || []).forEach((a, i) => { if (String(a.desc || '').trim() && Number(a.amount) > 0 && rcOk(a)) out.push(`ad:${i}`); });
+  return out;
+}
+/** ลบรายการ → เลื่อนเลขของรายการที่ยุบไว้ให้ตรง */
+function clrUiDel(kind, i) {
+  const u = ST.clrUi; if (!u) return;
+  u.closed = new Set([...u.closed].flatMap((key) => { const [k0, n] = key.split(':'), x = +n; return k0 !== kind ? [key] : x === i ? [] : [x > i ? `${k0}:${x - 1}` : key]; }));
+}
 function fuelsHtml(d, k, r) {
   const ev = d.plan.car === 'ev', none = d.plan.car === 'none', lo = addDays(d.go, -1), unit = ev ? 'kWh' : 'ลิตร';
-  const row = (f, i) => `<div class="furow"><div class="fug"><input class="inp" type="date" id="fu-d-${i}" data-fu="${i}:date" value="${esc(f.date)}" min="${lo}" max="${d.back}" aria-label="วันที่เติม รายการ ${i + 1}"><input class="inp num" type="number" step="0.01" id="fu-q-${i}" data-fu="${i}:qty" value="${esc(f.qty)}" placeholder="${unit}${ev || none ? ' (ถ้ามี)' : ''}" aria-label="${unit} รายการ ${i + 1}"><input class="inp num" type="number" id="fu-a-${i}" data-fu="${i}:amount" value="${esc(f.amount)}" placeholder="บาท" aria-label="ยอดเงิน รายการ ${i + 1}"><button class="xbtn" data-act="fuDel" data-v="${i}" aria-label="ลบรายการ ${i + 1}">${ms('close', 'style="font-size:18px"')}</button></div>
-    ${whoSel(d, 'fu', i, f.by)}<div class="rc">${f.file ? `<span class="hint">${ms('check_circle', 'style="font-size:15px;vertical-align:-3px;color:var(--good)"')} สลิปแนบแล้ว ${fileBtn(f.file, 'ดู')}</span>` : `<label class="ckl"><input type="checkbox" id="fu-n-${i}" data-fun="${i}" ${f.noRcpt ? 'checked' : ''}> ไม่มีสลิป</label>${f.noRcpt ? `<input class="inp" id="fu-w-${i}" data-fu="${i}:why" value="${esc(f.why)}" placeholder="เหตุผลที่ไม่มีสลิป *">` : ''}`}${fileIn(f.file, `fu-f-${i}`, `data-fuf="${i}"`, `สลิป รายการ ${i + 1}`)}</div></div>`;
-  return `<div class="field full"><label>${ev ? 'ค่าชาร์จรถไฟฟ้า' : none ? 'ค่าน้ำมัน/ค่าชาร์จที่จ่ายจริง (ถ้ามี)' : 'ค่าน้ำมัน'} · แนบสลิปทุกรายการ · รวม <b class="num">${fmt(r.fuel)}</b> บาท</label><div class="items">${k.fuels.length ? `<div class="fug fuh" aria-hidden="true"><span>วันที่เติม</span><span>${unit}</span><span>บาท</span><span></span></div>` : ''}${k.fuels.map(row).join('') || '<span class="hint">ไม่มีรายการ = ไม่ได้จ่ายค่า' + (ev ? 'ชาร์จ' : 'น้ำมัน') + '</span>'}
-    <button class="btn sm" style="align-self:flex-start" data-act="fuAdd">${ms('add')}เพิ่มรายการ${ev ? 'ชาร์จ' : 'เติมน้ำมัน'}</button></div></div>`;
+  const row = (f, i) => crow(`fu:${i}`, i, `<b>${f.date ? dt(f.date) : '—'}</b>${Number(f.qty) > 0 ? ` · ${fmt(Number(f.qty))} ${unit}` : ''} · <b class="num">${fmt(Number(f.amount) || 0)}</b>`, `${payTag(d, f.by)}${rcTag(f, 'สลิป')}`, `<div class="furow"><div class="fug"><input class="inp" type="date" id="fu-d-${i}" data-fu="${i}:date" value="${esc(f.date)}" min="${lo}" max="${d.back}" aria-label="วันที่เติม รายการ ${i + 1}"><input class="inp num" type="number" step="0.01" id="fu-q-${i}" data-fu="${i}:qty" value="${esc(f.qty)}" placeholder="${unit}${ev || none ? ' (ถ้ามี)' : ''}" aria-label="${unit} รายการ ${i + 1}"><input class="inp num" type="number" id="fu-a-${i}" data-fu="${i}:amount" value="${esc(f.amount)}" placeholder="บาท" aria-label="ยอดเงิน รายการ ${i + 1}"><button class="xbtn" data-act="fuDel" data-v="${i}" aria-label="ลบรายการ ${i + 1}">${ms('close', 'style="font-size:18px"')}</button></div>
+    ${whoSel(d, 'fu', i, f.by)}<div class="rc">${f.file ? `<span class="hint">${ms('check_circle', 'style="font-size:15px;vertical-align:-3px;color:var(--good)"')} สลิปแนบแล้ว ${fileBtn(f.file, 'ดู')}</span>` : `<label class="ckl"><input type="checkbox" id="fu-n-${i}" data-fun="${i}" ${f.noRcpt ? 'checked' : ''}> ไม่มีสลิป</label>${f.noRcpt ? `<input class="inp" id="fu-w-${i}" data-fu="${i}:why" value="${esc(f.why)}" placeholder="เหตุผลที่ไม่มีสลิป *">` : ''}`}${fileIn(f.file, `fu-f-${i}`, `data-fuf="${i}"`, `สลิป รายการ ${i + 1}`)}</div></div>`);
+  return `<div class="items">${k.fuels.map(row).join('') || '<span class="hint">ไม่มีรายการ = ไม่ได้จ่ายค่า' + (ev ? 'ชาร์จ' : 'น้ำมัน') + '</span>'}
+    <button class="btn sm cadd" data-act="fuAdd">${ms('add')}เพิ่มรายการ${ev ? 'ชาร์จ' : 'เติมน้ำมัน'}</button></div>`;
 }
 /** รอบ 10: ค่าใช้จ่ายที่ซื้อเพิ่มระหว่างทาง (ไม่ได้ขอไว้ตอนเบิก) · admin ติ๊กอนุมัติทีละรายการ */
 function addsHtml(k, adminRev) {
   const A = k.add || [], C = ST.settings.cats || ['อื่นๆ'];
-  const row = (a, i) => `<div class="exrow addrow">${adminRev ? `<label class="ckl excheck" style="margin:0"><input type="checkbox" id="ad-o-${i}" data-ado="${i}" ${a.ok ? 'checked' : ''}> อนุมัติรายการนี้ <b class="num">${fmt(Number(a.amount) || 0)}</b> บาท</label>` : ''}
+  const row = (a, i) => `${adminRev ? `<label class="ckl excheck caok"><input type="checkbox" id="ad-o-${i}" data-ado="${i}" ${a.ok ? 'checked' : ''}> อนุมัติรายการที่ ${i + 1} <b class="num">${fmt(Number(a.amount) || 0)}</b> บาท</label>` : ''}${crow(`ad:${i}`, i, `<b>${esc(a.desc || '—')}</b> · <b class="num">${fmt(Number(a.amount) || 0)}</b>`, `${payTag(doc(ST.clrNo), a.by)}${rcTag(a, 'ใบเสร็จ')}`, `<div class="exrow addrow">
     <div class="exl"><select class="sel" id="ad-c-${i}" data-ad="${i}:cat" aria-label="หมวด รายการ ${i + 1}">${C.map((c) => `<option ${c === a.cat ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select><input class="inp" id="ad-d-${i}" data-ad="${i}:desc" value="${esc(a.desc)}" placeholder="รายละเอียด เช่น สายไฟติดตั้งหน้างาน"><input class="inp num" type="number" id="ad-a-${i}" data-ad="${i}:amount" value="${esc(a.amount)}" placeholder="บาท"><button class="xbtn" data-act="adDel" data-v="${i}" aria-label="ลบรายการ ${i + 1}">${ms('close', 'style="font-size:18px"')}</button></div>${whoSel(doc(ST.clrNo), 'ad', i, a.by)}
-    <div class="rc">${a.file ? `<span class="hint">${ms('check_circle', 'style="font-size:15px;vertical-align:-3px;color:var(--good)"')} แนบแล้ว ${fileBtn(a.file, 'ดู')}</span>` : `<label class="ckl"><input type="checkbox" id="ad-n-${i}" data-adn="${i}" ${a.noRcpt ? 'checked' : ''}> ไม่มีใบเสร็จ</label>${a.noRcpt ? `<input class="inp" id="ad-w-${i}" data-ad="${i}:why" value="${esc(a.why)}" placeholder="เหตุผลที่ไม่มีใบเสร็จ *">` : ''}`}${fileIn(a.file, `ad-f-${i}`, `data-adf="${i}"`, `สลิป รายการซื้อเพิ่ม ${i + 1}`)}</div></div>`;
-  return `<div class="field full"><label>ซื้อเพิ่มระหว่างทาง (ไม่ได้ขอไว้ตอนเบิก)${adminRev ? ' · ติ๊กอนุมัติทีละรายการ ไม่ติ๊ก = ไม่จ่าย' : ' · รอ admin อนุมัติ'}</label><div class="items">${A.map(row).join('')}
-    <button class="btn sm" style="align-self:flex-start" data-act="adAdd">${ms('add_shopping_cart')}เพิ่มค่าใช้จ่าย</button></div></div>`;
+    <div class="rc">${a.file ? `<span class="hint">${ms('check_circle', 'style="font-size:15px;vertical-align:-3px;color:var(--good)"')} แนบแล้ว ${fileBtn(a.file, 'ดู')}</span>` : `<label class="ckl"><input type="checkbox" id="ad-n-${i}" data-adn="${i}" ${a.noRcpt ? 'checked' : ''}> ไม่มีใบเสร็จ</label>${a.noRcpt ? `<input class="inp" id="ad-w-${i}" data-ad="${i}:why" value="${esc(a.why)}" placeholder="เหตุผลที่ไม่มีใบเสร็จ *">` : ''}`}${fileIn(a.file, `ad-f-${i}`, `data-adf="${i}"`, `สลิป รายการซื้อเพิ่ม ${i + 1}`)}</div></div>`)}`;
+  return `<div class="items">${A.map(row).join('') || '<span class="hint">ยังไม่มีรายการ</span>'}
+    <button class="btn sm cadd" data-act="adAdd">${ms('add_shopping_cart')}เพิ่มค่าใช้จ่าย</button></div>`;
 }
 function preClrBox(d, r) {
   const orig = d.preClear ? d.preClear.requestedOrig : d.requested;
@@ -1126,27 +1152,36 @@ function vClr() {
   const pre = !!ST.clrPre && isAdmin(); const d = doc(ST.clrNo); if (!d || !(d.status === 'open' || (isAdmin() && d.status === 'clearSub') || (pre && d.status === 'approve')) || (!isAdmin() && d.staffId !== ST.me.id)) { ST.view = isAdmin() ? 'clear' : 'home'; return isAdmin() ? vClearList() : vMyTrips(); }
   const k = ST.clr || (ST.clr = newClr(d)); const r = clrCalc(d, k), diff = r.total - r.othersAmt - d.requested, s = set();
   const adminRev = isAdmin();
-  const stays = `<div class="field full"><label>ที่พัก (ตามจริง · กรอกเป็นช่วงวันที่ · หลายห้องคืนเดียวกันกรอกแยกช่วงได้) · อนุมัติไว้ ${roomsLine(roomRatesOf(d.plan))}${(d.plan.hotelSkip || []).length ? ` · <span style="color:var(--warn)">ไม่เบิกคืน ${d.plan.hotelSkip.map((x) => dt(x)).join(', ')}</span>` : ''}</label><div class="items">${k.stays.map((st, i) => `<div class="stay"><div class="sd"><input class="inp" type="date" id="st-f-${i}" data-st="${i}:from" value="${st.from}" min="${d.go}" max="${d.back}" aria-label="ตั้งแต่"><span>ถึง</span><input class="inp" type="date" id="st-t-${i}" data-st="${i}:to" value="${st.to}" min="${d.go}" max="${d.back}" aria-label="ถึง"></div><div class="sr"><input class="inp num" type="number" id="st-r-${i}" data-st="${i}:rate" value="${esc(st.rate)}" placeholder="บาท/คืน" aria-label="ราคาต่อคืน"><button class="xbtn" data-act="stayDel" data-v="${i}" aria-label="ลบช่วง">${ms('close', 'style="font-size:18px"')}</button></div>${whoSel(d, 'st', i, st.by)}<div class="stover" id="st-ov-${i}" ${r.stayOver[i] ? '' : 'hidden'}><div class="banner warn">${ms('hotel')}<span>ค่าที่พักต่อคืน (รวมทุกห้องในคืนเดียวกัน) เกินเกณฑ์ ${fmt(r.cap)} บาท · <b>ใส่เหตุผลและแนบใบเสร็จ</b> admin เป็นผู้ตัดสินส่วนเกิน</span></div><input class="inp" id="st-w-${i}" data-st="${i}:why" value="${esc(st.why || '')}" placeholder="เหตุผลที่เกิน * เช่น โรงแรมใกล้หน้างานเต็ม"><div class="rc">${st.file ? `<span class="hint">${ms('check_circle', 'style="font-size:15px;vertical-align:-3px;color:var(--good)"')} ใบเสร็จที่พัก ${fileBtn(st.file, 'ดู')}</span>` : ''}${fileIn(st.file, `st-file-${i}`, `data-stf="${i}"`, `ใบเสร็จที่พัก ช่วงที่ ${i + 1}`)}</div></div></div>`).join('')}
-      <button class="btn sm" style="align-self:flex-start" data-act="stayAdd">${ms('add')}เพิ่มช่วงที่พัก</button></div>
-      ${r.hotelExcess > 0 ? (adminRev ? `<label class="ckl excheck"><input type="checkbox" id="c-hex" data-cchk="hotelEx" ${k.hotelEx ? 'checked' : ''}> อนุมัติส่วนเกินที่พัก <b>${fmt(r.hotelExcess)}</b> บาท (เอาติ๊กออก = จ่ายไม่เกิน ${fmt(r.cap)}/คืน)</label>` : `<div class="banner info" style="margin-top:8px">${ms('hotel')}<span>นับยอดที่พักเต็มตามจริงแล้ว · ส่วนเกิน <b>${fmt(r.hotelExcess)}</b> บาท รอ admin อนุมัติ</span></div>`) : ''}</div>`;
-  const ex = r.ex.length ? `<div class="field full"><label>ค่าใช้จ่ายอื่นที่ขอไว้ · ใส่ยอดจริงและแนบใบเสร็จทุกรายการ</label><div class="items">${r.ex.map((e, i) => { const x = k.ex[i];
-      return `<div class="exrow clr"><div class="exh"><b>${esc(e.desc)}</b><span>${esc(e.cat)} · ขอไว้ ${fmt(e.amount)}</span></div><div class="exl"><input class="inp num" type="number" id="xc-a-${i}" data-xc="${i}:amount" value="${esc(x.amount)}" placeholder="ยอดจริง (บาท)"><input class="inp" type="file" id="xc-f-${i}" data-xcf="${i}" accept="image/*,application/pdf" style="padding-top:6px" aria-label="ใบเสร็จ ${esc(e.desc)}"></div>${whoSel(d, 'xc', i, x.by)}
+  if (!ST.clrUi || ST.clrUi.no !== d.no) ST.clrUi = { no: d.no, closed: new Set(clrDone(d, k, r)) };
+  const stNights = (st) => (st.from && st.to && st.to >= st.from ? dayDiff(st.from, st.to) + 1 : 0);
+  const staySub = `อนุมัติไว้ ${roomsLine(roomRatesOf(d.plan))}${(d.plan.hotelSkip || []).length ? ` · <span style="color:var(--warn)">ไม่เบิกคืน ${d.plan.hotelSkip.map((x) => dt(x)).join(', ')}</span>` : ''}`;
+  const stays = `<div class="items">${k.stays.map((st, i) => crow(`st:${i}`, i, `<b>${st.from ? dt(st.from) : '—'}${st.to && st.to !== st.from ? '–' + dt(st.to) : ''}</b> · ${stNights(st)} คืน × <b class="num">${fmt(Number(st.rate) || 0)}</b>`, `${payTag(d, st.by)}${r.stayOver[i] ? `<span class="ctag warn">เกินเกณฑ์</span>${rcTag(st, 'ใบเสร็จ')}` : ''}`, `<div class="stay"><div class="sd"><input class="inp" type="date" id="st-f-${i}" data-st="${i}:from" value="${st.from}" min="${d.go}" max="${d.back}" aria-label="ตั้งแต่"><span>ถึง</span><input class="inp" type="date" id="st-t-${i}" data-st="${i}:to" value="${st.to}" min="${d.go}" max="${d.back}" aria-label="ถึง"></div><div class="sr"><input class="inp num" type="number" id="st-r-${i}" data-st="${i}:rate" value="${esc(st.rate)}" placeholder="บาท/คืน" aria-label="ราคาต่อคืน"><button class="xbtn" data-act="stayDel" data-v="${i}" aria-label="ลบช่วง">${ms('close', 'style="font-size:18px"')}</button></div>${whoSel(d, 'st', i, st.by)}<div class="stover" id="st-ov-${i}" ${r.stayOver[i] ? '' : 'hidden'}><div class="banner warn">${ms('hotel')}<span>ค่าที่พักต่อคืน (รวมทุกห้องในคืนเดียวกัน) เกินเกณฑ์ ${fmt(r.cap)} บาท · <b>ใส่เหตุผลและแนบใบเสร็จ</b> admin เป็นผู้ตัดสินส่วนเกิน</span></div><input class="inp" id="st-w-${i}" data-st="${i}:why" value="${esc(st.why || '')}" placeholder="เหตุผลที่เกิน * เช่น โรงแรมใกล้หน้างานเต็ม"><div class="rc">${st.file ? `<span class="hint">${ms('check_circle', 'style="font-size:15px;vertical-align:-3px;color:var(--good)"')} ใบเสร็จที่พัก ${fileBtn(st.file, 'ดู')}</span>` : ''}${fileIn(st.file, `st-file-${i}`, `data-stf="${i}"`, `ใบเสร็จที่พัก ช่วงที่ ${i + 1}`)}</div></div></div>`)).join('') || '<span class="hint">ไม่มีรายการ = ไม่ได้จ่ายค่าที่พัก</span>'}
+      <button class="btn sm cadd" data-act="stayAdd">${ms('add')}เพิ่มห้อง / ช่วงที่พัก</button></div>
+      ${r.hotelExcess > 0 ? (adminRev ? `<label class="ckl excheck"><input type="checkbox" id="c-hex" data-cchk="hotelEx" ${k.hotelEx ? 'checked' : ''}> อนุมัติส่วนเกินที่พัก <b>${fmt(r.hotelExcess)}</b> บาท (เอาติ๊กออก = จ่ายไม่เกิน ${fmt(r.cap)}/คืน)</label>` : `<div class="banner info" style="margin-top:8px">${ms('hotel')}<span>นับยอดที่พักเต็มตามจริงแล้ว · ส่วนเกิน <b>${fmt(r.hotelExcess)}</b> บาท รอ admin อนุมัติ</span></div>`) : ''}`;
+  const ex = r.ex.length ? `<div class="items">${r.ex.map((e, i) => { const x = k.ex[i];
+      return crow(`xc:${i}`, i, `<b>${esc(e.desc)}</b> · ขอไว้ ${fmt(e.amount)} · จริง <b class="num">${x.amount === '' || x.amount == null ? '—' : fmt(Number(x.amount) || 0)}</b>`, `${payTag(d, x.by)}${rcTag(x, 'ใบเสร็จ')}${e.actual > e.amount ? '<span class="ctag warn">เกินที่ขอ</span>' : ''}`, `<div class="exrow clr"><div class="exh"><b>${esc(e.desc)}</b><span>${esc(e.cat)} · ขอไว้ ${fmt(e.amount)}</span></div><div class="exl"><input class="inp num" type="number" id="xc-a-${i}" data-xc="${i}:amount" value="${esc(x.amount)}" placeholder="ยอดจริง (บาท)"><input class="inp" type="file" id="xc-f-${i}" data-xcf="${i}" accept="image/*,application/pdf" style="padding-top:6px" aria-label="ใบเสร็จ ${esc(e.desc)}"></div>${whoSel(d, 'xc', i, x.by)}
         ${x.file ? `<span class="hint">${ms('check_circle', 'style="font-size:15px;vertical-align:-3px;color:var(--good)"')} แนบแล้ว ${fileBtn(x.file, 'ดู')}</span>` : `<label class="ckl"><input type="checkbox" id="xc-n-${i}" data-xcn="${i}" ${x.noRcpt ? 'checked' : ''}> ไม่มีใบเสร็จ</label>${x.noRcpt ? `<input class="inp" id="xc-w-${i}" data-xc="${i}:why" value="${esc(x.why)}" placeholder="เหตุผลที่ไม่มีใบเสร็จ * (admin ยืนยัน)">` : ''}`}
-        ${e.actual > e.amount ? `<span class="overtag bad">ใช้เกินที่ขอ ${fmt(e.actual - e.amount)} บาท</span>` : ''}</div>`; }).join('')}</div>
-      ${r.exOver > 0 && adminRev ? `<label class="ckl excheck"><input type="checkbox" id="c-exo" data-cchk="exOver" ${k.exOver ? 'checked' : ''}> อนุมัติค่าใช้จ่ายอื่นที่เกินที่ขอ <b>${fmt(r.exOver)}</b> บาท</label>` : ''}</div>` : '';
-  const files = `<div class="field full"><label for="c-files">ไฟล์แนบอื่น (ถ้ามี)</label><input class="inp" type="file" id="c-files" accept="image/*,application/pdf" multiple style="padding-top:6px"><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${k.files.map((f, i) => `<span class="chip">${fileBtn(f, `ใบเสร็จ ${i + 1}`)}<button class="btn sm ghost" style="height:20px;padding:0 2px" data-act="fileDel" data-v="${i}" aria-label="เอาไฟล์ออก">${ms('close', 'style="font-size:16px"')}</button></span>`).join('') || '<span class="hint">ยังไม่แนบ</span>'}</div></div>`;
+        ${e.actual > e.amount ? `<span class="overtag bad">ใช้เกินที่ขอ ${fmt(e.actual - e.amount)} บาท</span>` : ''}</div>`); }).join('')}</div>
+      ${r.exOver > 0 && adminRev ? `<label class="ckl excheck"><input type="checkbox" id="c-exo" data-cchk="exOver" ${k.exOver ? 'checked' : ''}> อนุมัติค่าใช้จ่ายอื่นที่เกินที่ขอ <b>${fmt(r.exOver)}</b> บาท</label>` : ''}` : '';
+  const files = `<div class="field full" style="margin:0"><label for="c-files">ไฟล์แนบอื่น (ถ้ามี)</label><input class="inp" type="file" id="c-files" accept="image/*,application/pdf" multiple style="padding-top:6px"><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${k.files.map((f, i) => `<span class="chip">${fileBtn(f, `ใบเสร็จ ${i + 1}`)}<button class="btn sm ghost" style="height:20px;padding:0 2px" data-act="fileDel" data-v="${i}" aria-label="เอาไฟล์ออก">${ms('close', 'style="font-size:16px"')}</button></span>`).join('') || '<span class="hint">ยังไม่แนบ</span>'}</div></div>`;
+  // หมวดเรียงตามลำดับ · เลขหมวดนับเฉพาะหมวดที่แสดง
+  const car = d.plan.car, fuelTitle = car === 'ev' ? 'ค่าชาร์จรถไฟฟ้า' : car === 'none' ? 'ค่าน้ำมัน/ค่าชาร์จที่จ่ายจริง' : 'ค่าน้ำมัน';
+  const fuelBody = k.fuels ? fuelsHtml(d, k, r) : `<div class="field" style="margin:0"><label for="c-fuel">${car === 'ev' ? 'ค่าชาร์จรถไฟฟ้าตามจริง (บาท)' : car === 'none' ? 'ค่าน้ำมัน/ค่าชาร์จที่จ่ายจริง (บาท) · ไม่ได้จ่ายใส่ 0' : 'ค่าน้ำมันตามจริง (บาท)'}</label><input class="inp num" type="number" id="c-fuel" data-c="fuel" value="${esc(k.fuel)}" placeholder="รวมทุกใบเสร็จน้ำมัน"></div>`;
+  const secs = [
+    ['groups', 'คนและวัน', `ใช้คิดเบี้ยเลี้ยง · ${esc(k.people)} คน × ${esc(k.days)} วัน × ${fmt(s.allowance)}`, 'al', r.allowance, `<div class="fgrid" style="margin:0"><div class="field" style="margin:0"><label for="c-people">จำนวนคน</label><input class="inp num" type="number" id="c-people" data-c="people" value="${esc(k.people)}"></div><div class="field" style="margin:0"><label for="c-days">จำนวนวันจริง</label><input class="inp num" type="number" id="c-days" data-c="days" value="${esc(k.days)}"></div></div>`],
+    [car === 'ev' ? 'ev_station' : 'local_gas_station', fuelTitle, k.fuels ? `${k.fuels.length} รายการ · แนบสลิปทุกรายการ` : 'ยอดรวมตามใบเสร็จ', 'fu', r.fuel, fuelBody],
+    (d.plan.nights || k.stays.length) ? ['hotel', 'ที่พัก', staySub, 'st', r.hotel, stays] : null,
+    r.ex.length ? ['request_quote', 'ค่าใช้จ่ายที่ขอไว้', 'ใส่ยอดจริงและแนบใบเสร็จทุกรายการ', 'xc', r.extras, ex] : null,
+    ['add_shopping_cart', 'ซื้อเพิ่มระหว่างทาง', adminRev ? 'ไม่ได้ขอไว้ · ติ๊กอนุมัติทีละรายการ ไม่ติ๊ก = ไม่จ่าย' : 'ไม่ได้ขอไว้ · รอ admin อนุมัติ', 'ad', r.addTotal, addsHtml(k, adminRev)],
+    ['attach_file', adminRev ? 'ไฟล์แนบอื่น' : 'ไฟล์แนบอื่นและหมายเหตุ', 'ถ้ามี', 'fi', null, files + (!adminRev ? `<div class="field" style="margin:10px 0 0"><label for="c-note">หมายเหตุถึง admin (ถ้ามี)</label><input class="inp" id="c-note" data-c="note" value="${esc(k.note)}"></div>` : '')],
+  ].filter(Boolean).map((x, i) => csec(i + 1, x[0], x[1], x[2], x[3], x[4], x[5])).join('');
   const topSrc = adminRev && !pre && (diff > 0 || r.others.length) && !r.err ? `<div class="srcpick" style="margin-bottom:8px"><label><input type="radio" name="tsrc" value="PC" ${k.src === 'PC' ? 'checked' : ''}> จ่ายส่วนต่างเงินสำรองจ่าย<br><small style="color:var(--sub)">เหลือ ${fmt(ST.trv.pcBalance)}</small></label><label><input type="radio" name="tsrc" value="BANK" ${k.src === 'BANK' ? 'checked' : ''}> โอนส่วนต่าง</label></div><p class="formula" style="margin:-2px 0 8px">${topupCeoNote(Math.max(0, diff) + r.othersAmt)}</p>` : '';
   return `<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap"><button class="btn sm ghost" data-act="go" data-v="${isAdmin() ? 'clear' : 'home'}">${ms('arrow_back')}${isAdmin() ? 'เคลียร์เงิน' : 'ทริปของฉัน'}</button><span class="tpill t-TRV">TRV</span><b class="num">${d.no}</b><span style="color:var(--sub)">${esc(d.staffName)} · ${esc(d.title)} · ${dRange(d.go, d.back)}</span></div>
     ${pre ? `<div class="banner info" style="margin-bottom:12px">${ms('receipt_long')}<span><b>เคลียร์ก่อนโอน</b> · ทริปจบแล้วแต่ยังไม่ได้โอน ใส่ยอดที่ ${esc(d.staffName)} สำรองจ่ายจริง · ระบบจะโอนตามยอดจริงและปิดใบทันทีเมื่อโอนเสร็จ</span></div>` : ''}
     ${adminRev && d.status === 'clearSub' ? `<div class="banner info" style="margin-bottom:12px">${ms('inbox')}<span><b>${esc(d.clearSub.byName)}</b> ส่งเคลียร์เมื่อ ${dtTime(d.clearSub.at)} · ตรวจตัวเลขกับใบเสร็จ แก้ได้ แล้วกดยืนยัน${d.clearSub.note ? `<br>หมายเหตุ: ${esc(d.clearSub.note)}` : ''}</span></div>` : ''}
     ${!adminRev && d.clearReturn ? `<div class="banner warn" style="margin-bottom:12px">${ms('edit_note')}<span>admin ส่งกลับให้แก้: <b>${esc(d.clearReturn)}</b></span></div>` : ''}
-    <div class="grid g2"><div class="card"><div class="fgrid">
-      <div class="field"><label for="c-people">จำนวนคน</label><input class="inp num" type="number" id="c-people" data-c="people" value="${esc(k.people)}"></div>
-      <div class="field"><label for="c-days">จำนวนวันจริง</label><input class="inp num" type="number" id="c-days" data-c="days" value="${esc(k.days)}"></div>
-      ${k.fuels ? fuelsHtml(d, k, r) : `<div class="field full"><label for="c-fuel">${d.plan.car === 'ev' ? 'ค่าชาร์จรถไฟฟ้าตามจริง (บาท)' : d.plan.car === 'none' ? 'ค่าน้ำมัน/ค่าชาร์จที่จ่ายจริง (บาท) · ไม่ได้จ่ายใส่ 0' : 'ค่าน้ำมันตามจริง (บาท)'}</label><input class="inp num" type="number" id="c-fuel" data-c="fuel" value="${esc(k.fuel)}" placeholder="รวมทุกใบเสร็จน้ำมัน"></div>`}
-      ${stays}${ex}${addsHtml(k, adminRev)}${files}
-      ${!adminRev ? `<div class="field full"><label for="c-note">หมายเหตุถึง admin (ถ้ามี)</label><input class="inp" id="c-note" data-c="note" value="${esc(k.note)}"></div>` : ''}</div></div>
-    <div class="card calc"><div id="calcBody"><h3>${ms('compare_arrows')}เทียบยอด</h3><div class="lines">
+    <div class="grid g2 cgrid"><div class="csecs">${secs}</div>
+    <div class="card calc" id="clrCalcCard"><div id="calcBody"><h3>${ms('summarize')}สรุปยอดเคลียร์</h3><div class="lines">
       <div><span>ยอดเบิก</span><b>${fmt(d.requested)}</b></div><div><span>${d.plan.car === 'ev' ? 'ค่าชาร์จ' : 'น้ำมัน'}จริง${k.fuels ? `<br><span class="f">${k.fuels.length} รายการ${d.plan.car !== 'ev' && k.fuels.length ? ` · ${fmt(k.fuels.reduce((t, f) => t + (Number(f.qty) || 0), 0))} ลิตร` : ''}</span>` : ''}</span><b>${!k.fuels && k.fuel === '' ? '—' : fmt(r.fuel)}</b></div>
       <div><span>เบี้ยเลี้ยง<br><span class="f">${esc(k.people)} คน × ${esc(k.days)} วัน × ${fmt(s.allowance)}</span></span><b>${fmt(r.allowance)}</b></div>
       <div><span>ที่พัก ${r.nights} คืน${r.hotelExcess > 0 ? `<br><span class="f">${r.proj ? `รอ admin ตัดสินส่วนเกิน ${fmt(r.hotelExcess)}` : k.hotelEx ? `รวมส่วนเกิน ${fmt(r.hotelExcess)} ที่อนุมัติ` : `คืนไม่เกิน ${fmt(r.cap)}/คืน`}</span>` : ''}</span><b>${fmt(r.hotel)}</b></div>
@@ -1159,7 +1194,8 @@ function vClr() {
       ${topSrc}</div>
       ${pre ? `<button class="btn pri block" data-act="clrPre">${ms('task_alt')}ยืนยันผลเคลียร์${r.err ? '' : ` · โอน ${fmt(r.total)}`}</button>` : adminRev ? `<button class="btn pri block" data-act="clrConfirm">${ms('task_alt')}ยืนยันผลเคลียร์</button>${d.status === 'clearSub' ? `<div class="field" style="margin-top:10px"><label for="c-ret">เหตุผล (ถ้าส่งกลับให้แก้)</label><input class="inp" id="c-ret" placeholder="เช่น ใบเสร็จน้ำมันไม่ชัด"></div><button class="btn block" style="margin-top:6px" data-act="clrReturn">${ms('undo')}ส่งกลับให้แก้</button>` : ''}`
         : `<button class="btn pri block" data-act="clrSubmit">${ms('send')}ส่งเคลียร์ให้ admin ตรวจ</button>`}
-    </div></div>`;
+    </div></div>
+    <button type="button" class="cstrip" id="clrStrip" data-live data-act="clrSum">${r.err ? `${ms('error')}<span>ยังไม่ครบ · ${esc(r.err)}</span>` : `<span>ใช้จริง <b class="num">${fmt(r.total)}</b></span><span>${diff < 0 ? 'คืน' : diff > 0 ? 'จ่ายเพิ่ม' : 'พอดี'} <b class="num">${fmt(Math.abs(diff))}</b></span>`}${ms('expand_less')}</button>`;
 }
 
 // ---------- ขออนุมัติโอน (ใบเสนอ CEO · APV) ----------
@@ -1579,15 +1615,16 @@ function vAdv() {
   const d = doc(ST.advNo); if (!d || d.type !== 'ADV' || d.status !== 'open' || !isAdmin()) { ST.view = 'clear'; return vClearList(); }
   const k = ST.ac || (ST.ac = { receipts: d.items.map((i) => ({ desc: i.desc, cat: cats()[0], amount: '', file: null, noRcpt: false, why: '' })), src: 'PC' });
   return `<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap"><button class="btn sm ghost" data-act="go" data-v="clear">${ms('arrow_back')}เคลียร์เงิน</button>${tpill('ADV')}<b class="num">${d.no}</b><span style="color:var(--sub)">${esc(d.staffName)} · ${esc(d.title)} · ${dt(d.go)}</span></div>
-    <div class="grid g2"><div class="card"><h3>${ms('receipt_long')}ใบเสร็จที่ใช้จริง</h3><div class="items">${k.receipts.map((r, i) => `<div class="exrow clr">
+    <div class="grid g2 cgrid"><div class="csecs">${csec(1, 'list_alt', 'รายการที่ขอไว้', `${d.items.length} รายการ`, 'aq', d.requested, `<div class="lines">${d.items.map((x) => `<div><span>${esc(x.desc)}</span><b>${fmt(x.amount)}</b></div>`).join('')}</div>`)}
+    ${csec(2, 'receipt_long', 'ใบเสร็จที่ใช้จริง', 'แนบรูปทุกใบ หรือติ๊กไม่มีใบเสร็จพร้อมเหตุผล', 'ac', k.receipts.reduce((t, r) => t + (Number(r.amount) || 0), 0), `<div class="items">${k.receipts.map((r, i) => `<div class="crow open"><div class="crh" style="cursor:default"><span class="cri">${i + 1}</span><span class="crs">ใบเสร็จที่ ${i + 1}</span><span class="crt">${rcTag(r, 'ใบเสร็จ')}</span><span></span></div><div class="crb"><div class="exrow clr">
         <div class="irow"><input class="inp" id="ac-d-${i}" data-ac="${i}:desc" placeholder="รายการ" value="${esc(r.desc)}"><select class="sel cat" id="ac-c-${i}" data-ac="${i}:cat" aria-label="หมวด">${opts(cats(), r.cat)}</select><input class="inp num" type="number" inputmode="decimal" id="ac-a-${i}" data-ac="${i}:amount" placeholder="บาท" value="${esc(r.amount)}"><button class="xbtn" data-act="acDel" data-v="${i}" aria-label="ลบใบเสร็จ" ${k.receipts.length < 2 ? 'disabled' : ''}>${ms('close', 'style="font-size:18px"')}</button></div>
-        ${r.file ? `<span class="hint">${ms('check_circle', 'style="font-size:15px;vertical-align:-3px;color:var(--good)"')} แนบแล้ว ${fileBtn(r.file, 'ดู')}</span>` : `${r.noRcpt ? '' : `<div class="field"><input class="inp" type="file" id="ac-f-${i}" data-acf="${i}" accept="image/*,application/pdf" style="padding-top:6px" aria-label="รูปใบเสร็จ ${i + 1}"></div>`}<label class="ckl"><input type="checkbox" data-acn="${i}" ${r.noRcpt ? 'checked' : ''}> ไม่มีใบเสร็จ</label>${r.noRcpt ? `<div class="field"><input class="inp" id="ac-w-${i}" data-ac="${i}:why" value="${esc(r.why)}" placeholder="เหตุผลที่ไม่มีใบเสร็จ *"></div>` : ''}`}</div>`).join('')}
-      <button class="btn sm" style="align-self:flex-start" data-act="acAdd">${ms('add')}เพิ่มใบเสร็จ</button></div></div>
+        ${r.file ? `<span class="hint">${ms('check_circle', 'style="font-size:15px;vertical-align:-3px;color:var(--good)"')} แนบแล้ว ${fileBtn(r.file, 'ดู')}</span>` : `${r.noRcpt ? '' : `<div class="field"><input class="inp" type="file" id="ac-f-${i}" data-acf="${i}" accept="image/*,application/pdf" style="padding-top:6px" aria-label="รูปใบเสร็จ ${i + 1}"></div>`}<label class="ckl"><input type="checkbox" data-acn="${i}" ${r.noRcpt ? 'checked' : ''}> ไม่มีใบเสร็จ</label>${r.noRcpt ? `<div class="field"><input class="inp" id="ac-w-${i}" data-ac="${i}:why" value="${esc(r.why)}" placeholder="เหตุผลที่ไม่มีใบเสร็จ *"></div>` : ''}`}</div></div></div>`).join('')}
+      <button class="btn sm cadd" data-act="acAdd">${ms('add')}เพิ่มใบเสร็จ</button></div>`)}</div>
     <div class="card calc"><div id="acCalc">${advCalcHtml(d, k)}</div><button class="btn pri block" style="margin-top:12px" data-act="acSave">${ms('task_alt')}ยืนยันผลเคลียร์</button></div></div>`;
 }
 function advCalcHtml(d, k) {
   const total = k.receipts.reduce((t, r) => t + (Number(r.amount) || 0), 0), diff = Math.round((total - d.requested) * 100) / 100;
-  return `<h3>${ms('compare_arrows')}เทียบยอด</h3><div class="lines"><div><span>เงินทดรองที่จ่ายไป</span><b>${fmt(d.requested)}</b></div><div><span>ใบเสร็จรวม ${k.receipts.length} ใบ</span><b>${fmt(total)}</b></div></div>
+  return `<h3>${ms('summarize')}สรุปยอดเคลียร์</h3><div class="lines"><div><span>เงินทดรองที่จ่ายไป</span><b>${fmt(d.requested)}</b></div><div><span>ใบเสร็จรวม ${k.receipts.length} ใบ</span><b>${fmt(total)}</b></div></div>
     <div class="diffbox ${diff < 0 ? 'refund' : diff > 0 ? 'topup' : 'even'}" style="margin:12px 0"><span>${diff < 0 ? 'ทีมงานต้องคืนเงิน' : diff > 0 ? 'บริษัทต้องจ่ายเพิ่ม' : 'พอดี ปิดใบได้ทันที'}</span><b>${fmt(Math.abs(diff))} บาท</b></div>
     ${diff > 0 ? `<div class="srcpick"><label><input type="radio" name="asrc" value="PC" ${k.src === 'PC' ? 'checked' : ''}> จ่ายส่วนต่างเงินสำรองจ่าย<br><small style="color:var(--sub)">เหลือ ${fmt(ST.trv.pcBalance)}</small></label><label><input type="radio" name="asrc" value="BANK" ${k.src === 'BANK' ? 'checked' : ''}> โอนส่วนต่าง</label></div>` : ''}`;
 }
@@ -2158,8 +2195,8 @@ async function trvClick(a, v, b) {
     });
     return true;
   }
-  if (a === 'openPreClr') { const d = doc(v); ST.clrNo = v; ST.clrPre = true; ST.clr = d && d.preClear ? clrFromPre(d) : null; ST.view = 'clr'; closeDrawer(); render(); $('#view').scrollTop = 0; return true; }
-  if (a === 'openClr') { const d = doc(v); ST.clrNo = v; ST.clr = null; ST.clrPre = false; ST.view = 'clr'; closeDrawer(); render(); $('#view').scrollTop = 0; void d; return true; }
+  if (a === 'openPreClr') { const d = doc(v); ST.clrNo = v; ST.clrPre = true; ST.clrUi = null; ST.clr = d && d.preClear ? clrFromPre(d) : null; ST.view = 'clr'; closeDrawer(); render(); $('#view').scrollTop = 0; return true; }
+  if (a === 'openClr') { const d = doc(v); ST.clrNo = v; ST.clr = null; ST.clrUi = null; ST.clrPre = false; ST.view = 'clr'; closeDrawer(); render(); $('#view').scrollTop = 0; void d; return true; }
   if (a === 'cancelForm') { ST.form = null; ST.view = 'home'; render(); return true; }
   // รอบ 3: สร้างใบใหม่ / เคลียร์เงินทดรอง / สมุด / เงินสำรองจ่าย
   if (a === 'nfType') { if (v === 'TRV') return trvClick('newReq', v, b); if (v === 'PC') { ST.view = 'pc'; ST.pcForm = 'topup'; render(); $('#pc-amt')?.focus(); return true; } ST.nfType = v; render(); return true; }
@@ -2353,14 +2390,19 @@ async function trvClick(a, v, b) {
   // เคลียร์
   const k = ST.clr;
   if (a === 'stayAdd') { const d = doc(ST.clrNo); const last = k.stays[k.stays.length - 1]; const from = last ? addDays(last.to, 1) : d.go; k.stays.push({ from: from > d.back ? d.back : from, to: from > d.back ? d.back : from, rate: '' }); render(); return true; }
-  if (a === 'stayDel') { k.stays.splice(+v, 1); render(); return true; }
+  if (a === 'stayDel') { k.stays.splice(+v, 1); clrUiDel('st', +v); render(); return true; }
+  if (a === 'crow') { const u = ST.clrUi; if (u) { if (u.closed.has(v)) u.closed.delete(v); else u.closed.add(v); } render(); return true; }
+  if (a === 'clrSum') { $('#clrCalcCard')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); return true; }
   if (a === 'fuAdd') { const d = doc(ST.clrNo), last = k.fuels[k.fuels.length - 1]; k.fuels.push(fuelRow(last ? last.date : d.go)); render(); return true; }
-  if (a === 'fuDel') { k.fuels.splice(+v, 1); render(); return true; }
+  if (a === 'fuDel') { k.fuels.splice(+v, 1); clrUiDel('fu', +v); render(); return true; }
   if (a === 'adAdd') { (k.add = k.add || []).push(addRow()); render(); return true; }
-  if (a === 'adDel') { k.add.splice(+v, 1); render(); return true; }
+  if (a === 'adDel') { k.add.splice(+v, 1); clrUiDel('ad', +v); render(); return true; }
   if (a === 'fileDel') { k.files.splice(+v, 1); render(); return true; }
   if (a === 'clrSubmit' || a === 'clrConfirm') {
-    const d = doc(ST.clrNo), r = clrCalc(d, k); if (r.err) { toast(`กรอกข้อมูลไม่ครบ: ${r.err}`, 'error'); if (!k.fuels && (k.fuel === '' || k.fuel == null)) need([['#c-fuel', 'ค่าน้ำมันจริง']]); return true; }
+    const d = doc(ST.clrNo), r = clrCalc(d, k); if (r.err) {
+      // รอบ 19: เปิดรายการที่ยังไม่ครบ (ที่ยุบไว้) ให้เห็นช่องที่ต้องกรอก
+      if (ST.clrUi) { const done = new Set(clrDone(d, k, r)); ST.clrUi.closed = new Set([...ST.clrUi.closed].filter((x) => done.has(x))); render(); }
+      toast(`กรอกข้อมูลไม่ครบ: ${r.err}`, 'error'); if (!k.fuels && (k.fuel === '' || k.fuel == null)) need([['#c-fuel', 'ค่าน้ำมันจริง']]); return true; }
     await busy(b, async () => {
       const clr = clrPayload(k);
       if (a === 'clrSubmit') { await api('trvClearSubmit', { no: d.no, clr }); toast('ส่งเคลียร์แล้ว · รอ admin ตรวจ'); }
@@ -2370,7 +2412,10 @@ async function trvClick(a, v, b) {
     return true;
   }
   if (a === 'clrPre') {
-    const d = doc(ST.clrNo), r = clrCalc(d, k); if (r.err) { toast(`กรอกข้อมูลไม่ครบ: ${r.err}`, 'error'); if (!k.fuels && (k.fuel === '' || k.fuel == null)) need([['#c-fuel', 'ค่าน้ำมันจริง']]); return true; }
+    const d = doc(ST.clrNo), r = clrCalc(d, k); if (r.err) {
+      // รอบ 19: เปิดรายการที่ยังไม่ครบ (ที่ยุบไว้) ให้เห็นช่องที่ต้องกรอก
+      if (ST.clrUi) { const done = new Set(clrDone(d, k, r)); ST.clrUi.closed = new Set([...ST.clrUi.closed].filter((x) => done.has(x))); render(); }
+      toast(`กรอกข้อมูลไม่ครบ: ${r.err}`, 'error'); if (!k.fuels && (k.fuel === '' || k.fuel == null)) need([['#c-fuel', 'ค่าน้ำมันจริง']]); return true; }
     await busy(b, async () => {
       const clr = clrPayload(k);
       const res = await api('trvPreClear', { no: d.no, clr, hotelEx: k.hotelEx, exOver: k.exOver, addOk: addOkOf(k) });
@@ -2442,7 +2487,7 @@ document.addEventListener('input', (e) => {
     return; }
   if (el.dataset.nf && ST.nf) { ST.nf[el.dataset.nf] = el.value; if (el.dataset.nf === 'amount') { const t = $('#nfTot'); if (t) t.textContent = fmt(Number(el.value) || 0); } return; }
   if (el.dataset.nfi && ST.nf) { const [i, key] = el.dataset.nfi.split(':'); ST.nf.items[+i][key] = el.value; const t = $('#nfTot'); if (t) t.textContent = fmt(ST.nf.items.reduce((x, y) => x + (Number(y.amount) || 0), 0)); const c = $('#nfCnt'); if (c) c.textContent = `${ST.nf.items.filter((y) => y.desc.trim() && Number(y.amount) > 0).length} รายการ`; return; }
-  if (el.dataset.ac && ST.ac) { const [i, key] = el.dataset.ac.split(':'); ST.ac.receipts[+i][key] = el.value; if (key === 'amount') { const c = $('#acCalc'); if (c) c.innerHTML = advCalcHtml(doc(ST.advNo), ST.ac); } return; }
+  if (el.dataset.ac && ST.ac) { const [i, key] = el.dataset.ac.split(':'); ST.ac.receipts[+i][key] = el.value; if (key === 'amount') { const c = $('#acCalc'); if (c) c.innerHTML = advCalcHtml(doc(ST.advNo), ST.ac); const s = $('#cs-ac'); if (s) s.textContent = fmt(ST.ac.receipts.reduce((t, r) => t + (Number(r.amount) || 0), 0)); } return; }
   if (el.id === 'pc-count') { const r = $('#countRes'); if (r) { const d = el.value === '' ? null : Math.round((Number(el.value) - ST.pc.balance) * 100) / 100; r.innerHTML = d == null ? 'ใส่ยอดที่นับได้ ระบบบอกส่วนต่างให้' : d === 0 ? `<b style="color:var(--good)">ยอดตรง</b>` : `<b style="color:var(--bad)">${d > 0 ? 'เกิน' : 'ขาด'} ${fmt(Math.abs(d))} บาท</b> · ใส่เหตุผลแล้วบันทึกเพื่อปรับยอด`; } return; }
   if (el.id === 'apv-q') { ST.apvQ = el.value; const pos = el.selectionStart; render(); const n = $('#apv-q'); if (n) { n.focus(); n.setSelectionRange(pos, pos); } return; }
   if (el.id === 'cq') { ST.claimQ = el.value; const pos = el.selectionStart; render(); const n = $('#cq'); n.focus(); n.setSelectionRange(pos, pos); return; }
@@ -2464,6 +2509,8 @@ function updCalc() {
   const html = ST.view === 'req' ? vReq() : ST.view === 'clr' ? vClr() : null; if (!html) return;
   const tmp = document.createElement('div'); tmp.innerHTML = html;
   const nb = tmp.querySelector('#calcBody'), ob = $('#calcBody'); if (nb && ob && nb.innerHTML !== ob.innerHTML) ob.replaceWith(nb);
+  // รอบ 19: ยอดย่อยหัวหมวด + แถบสรุปมือถือ อัปเดตตามที่พิมพ์ (ไม่ render ทั้งหน้า ช่องที่กำลังพิมพ์ไม่หลุด)
+  tmp.querySelectorAll('[data-live][id]').forEach((n) => { const o = document.getElementById(n.id); if (o && o.innerHTML !== n.innerHTML) o.innerHTML = n.innerHTML; });
   ['clrSubmit', 'clrConfirm'].forEach((a) => { const n = tmp.querySelector(`[data-act="${a}"]`), o = $(`#view [data-act="${a}"]`); if (n && o) o.disabled = n.disabled; });
 }
 document.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.tcard[data-act]')) { e.preventDefault(); e.target.click(); } if (e.key === 'Escape') { if (ST.ceoBack && isCeo()) ceoBackToBatch(); else closeDrawer(); } });
