@@ -880,7 +880,7 @@ function drawDoc(no) {
       ${d.rejectNote && d.status === 'rejected' ? `<div class="banner bad">${ms('block')}<span>${d.cancelled ? 'ยกเลิก' : 'ไม่อนุมัติ'}: <b>${esc(d.rejectNote)}</b></span></div>` : ''}
       ${d.clearReturn && d.status === 'open' ? `<div class="banner warn">${ms('edit_note')}<span>ส่งเคลียร์กลับให้แก้: <b>${esc(d.clearReturn)}</b></span></div>` : ''}
       <div class="card"><b style="font-size:16px">${esc(d.title)}</b><dl class="kv" style="margin-top:8px"><dt>ผู้รับเงิน</dt><dd>${esc(d.staffName)}</dd><dt>ผู้เดินทาง</dt><dd>${d.travelers.map((t) => esc(t.name)).join(', ')}</dd><dt>วันที่</dt><dd>${dRange(d.go, d.back)} (${p.days} วัน ${p.nights} คืน)</dd>${p.veh ? `<dt>รถที่ใช้</dt><dd>${vehHtml(p)}</dd>` : ''}<dt>สถานที่</dt><dd>${d.stops.length} แห่ง · ${fmt(p.km)} กม. ไป-กลับ</dd><dt>จ่ายโดย</dt><dd>${d.paidFrom === 'PC' ? 'เงินสำรองจ่าย' : d.paidFrom === 'BANK' ? 'โอนเข้าบัญชี' : '—'}</dd></dl>${pay}</div>
-      ${extCards(d)}${voucherBtn(d)}
+      ${extCards(d)}${voucherBtn(d)}${pcRptBtn(d)}
       ${routeCard(d, mapBtn)}${km}<div class="card"><h3>${ms('calculate')}ยอดที่ขอเบิก</h3>${lines}</div>${actual}
       <div class="card"><h3>${ms('history')}ความเคลื่อนไหว</h3><ul class="tl">${d.timeline.map((t) => `<li>${esc(t.text)}${t.amt != null ? ` · <b class="num">${fmt(t.amt)}</b>` : ''}<small>${dtTime(t.at)} · ${esc(t.byName)}</small></li>`).join('')}</ul></div>
     </div>${act ? `<div class="df">${act}</div>` : ''}`);
@@ -1560,24 +1560,70 @@ const VK_LABEL = { RV: 'ใบรับเงิน', PV: 'ใบสำคัญ
 const voucherBtn = (d) => d.actual && ['TRV', 'ADV'].includes(d.type || 'TRV') && ['refund', 'topup', 'closed'].includes(d.status) && (isAdmin() || (isCeo() && d.vno)) ? `<button class="btn block" data-act="voucher" data-v="${d.no}">${ms('receipt_long')}พิมพ์${VK_LABEL[d.vkind || (d.diff < 0 ? 'RV' : d.diff > 0 ? 'PV' : 'CL')]}${d.vno ? ` ${esc(d.vno)}` : ' (A4)'}</button>` : '';
 /** รอบ 16: รายงานใบที่จ่ายจากเงินสำรองจ่ายโดยไม่ผ่าน CEO (ADV / EXP / RMB) — admin ผู้จัดทำลงนามคนเดียว */
 const isPcDirect = (d) => ['ADV', 'EXP', 'RMB'].includes(d.type) && d.paidFrom === 'PC' && d.payment && !d.payment.batch;
-const pcRptBtn = (d) => isPcDirect(d) && (isAdmin() || isCeo()) ? `<button class="btn block" data-act="pcReport" data-v="${d.no}">${ms('print')}พิมพ์รายงานใบนี้ (A4)</button>` : '';
-function pcDocReport(no) {
+/** รอบ 21: รายงานรายใบ (ทุกประเภท ทุกสถานะ) — admin / CEO */
+const pcRptBtn = (d) => (isAdmin() || isCeo()) ? `<button class="btn block" data-act="docReport" data-v="${d.no}">${ms('print')}พิมพ์รายงานใบนี้ (A4)</button>` : '';
+const plainText = (h) => String(h || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+async function docReport(no) {
   const d = doc(no); if (!d) return;
-  const x = { kind: d.type === 'ADV' ? 'advance' : d.type === 'RMB' ? 'rmb' : 'exp', type: d.type, ref: d.no, via: 'PC', payee: whoOf(d), amount: d.requested, title: d.title };
-  const p = d.payment || {}, a = d.actual;
-  const st = { open: 'จ่ายแล้ว · รอเคลียร์ใบเสร็จ', refund: 'เคลียร์แล้ว · รอทีมงานคืนเงิน', topup: 'เคลียร์แล้ว · รอจ่ายส่วนต่าง', closed: 'ปิดใบแล้ว' }[d.status] || esc(d.status);
-  const clr = d.type === 'ADV' && a ? `<h4 style="margin:14px 0 6px">ผลเคลียร์ (${a.receipts.length} ใบเสร็จ)</h4><table style="width:100%;border-collapse:collapse"><thead><tr><th style="width:24px">ที่</th><th style="text-align:left">รายการ</th><th style="text-align:left;width:110px">หมวด</th><th style="text-align:right;width:86px">ยอด</th></tr></thead><tbody>
-      ${a.receipts.map((r, i) => `<tr><td>${i + 1}</td><td>${esc(r.desc)}${r.why ? `<br><small>ไม่มีใบเสร็จ: ${esc(r.why)}</small>` : ''}</td><td><small>${esc(r.cat || '')}</small></td><td style="text-align:right">${fmt(r.amount)}</td></tr>`).join('')}</tbody>
-      <tfoot><tr><td></td><td colspan="2"><b>ใช้จริง</b> · เบิกไป ${fmt(d.requested)} · ${d.diff < 0 ? `ทีมงานคืน ${fmt(-d.diff)}` : d.diff > 0 ? `บริษัทจ่ายเพิ่ม ${fmt(d.diff)}` : 'พอดี'}</td><td style="text-align:right"><b>${fmt(a.total)}</b></td></tr></tfoot></table>` : '';
-  const page = `<div class="a4 rpt">${a4Head('บริษัท ซีทูเทค จำกัด', '99/3 หมู่ 9 ต.วังไก่เถื่อน อ.หันคา จ.ชัยนาท 17130', `<b>รายงานการจ่ายเงินสำรองจ่าย</b>เลขที่ ${esc(d.no)}<br>${st}`)}
-    <table class="kvt"><tr><td>ประเภท</td><td>${esc(TYPE_LABEL[d.type] || '')}</td><td>ผู้จัดทำ</td><td>${esc(d.createdByName || p.byName || '')} · ${tTime(d.createdAt)}</td></tr>
-      <tr><td>จ่ายจาก</td><td><b>เงินสำรองจ่าย (เงินสด)</b><br><small>ไม่ต้องเสนอ CEO</small></td><td>จ่ายเมื่อ</td><td>${thDate(p.date)}${p.byName ? ` · โดย ${esc(p.byName)}` : ''}</td></tr>
-      <tr><td>ยอดเงิน</td><td><b>${fmt(d.requested)}</b> บาท<br><small>(${bahtText(d.requested)})</small></td><td>สถานะ</td><td>${st}${d.closedAt ? ` · ${thDate(String(d.closedAt).slice(0, 10))}` : ''}</td></tr></table>
-    <div style="margin-top:10px">${detailOf(x, d, null, null)}</div>${clr}
-    <div class="rnote"><b>ประวัติ:</b> ${(d.timeline || []).map((t) => `${tTime(t.at)} ${esc(t.text)}${t.byName ? ` (${esc(t.byName)})` : ''}`).join(' · ')}</div>
-    <div class="signs one"><div class="sign"><b>ผู้จัดทำ (admin)</b><div class="ln">( ${esc(d.createdByName || p.byName || '')} )</div><small>วันที่ ......../......../........</small></div></div>
+  const s = set(), trv = (d.type || 'TRV') === 'TRV', p = d.plan || {}, a = d.actual, tl = d.timeline || [];
+  // ใบเสนอที่เกี่ยวกับใบนี้ (เงินเบิก · ต่อทริป · ส่วนต่าง) → ใช้เวลา CEO อนุมัติจริงจากใบเสนอ
+  const bnos = [...new Set([d.batch, d.payment && d.payment.batch, d.extPay && d.extPay.batch, d.settle && d.settle.batch, ...(d.ext || []).map((e) => e.paid && e.paid.batch), ...(d.payouts || []).map((x) => x.batch)].filter(Boolean))];
+  const B = {}; for (const n of bnos) { try { B[n] = (await api('apvGet', { no: n })).batch; } catch (e) { /* ใบเสนอถูกลบ/ไม่มีสิทธิ์ ข้ามได้ */ } }
+  const ceoOf = (b) => !b ? '' : b.ceoSkip ? 'ไม่ต้องเสนอ CEO' : b.ceoApp ? `CEO อนุมัติ · ${esc(b.ceoApp.name)}` : b.ceoAt ? 'CEO อนุมัติ (เซ็นกระดาษ)' : 'รอ CEO อนุมัติ';
+  const ceoAt = (b) => b && (b.ceoApp ? b.ceoApp.at : b.ceoAt) || '';
+  const r = (k, sub, v, cls) => `<div class="rr${cls ? ' ' + cls : ''}"><span>${k}${sub ? ` <small>${sub}</small>` : ''}</span><span class="num">${v}</span></div>`;
+  const st = plainText(statusPill(d)) || d.status;
+  // 1. ข้อมูล
+  const info = trv ? `<div class="rkv"><span>ชื่องาน</span><span>${esc(d.title)}</span><span>ผู้รับเงิน</span><span>${esc(d.staffName)}</span>
+      <span>วันที่</span><span>${thDate(d.go)}${d.back !== d.go ? ' – ' + thDate(d.back) : ''} (${p.days} วัน ${p.nights} คืน)</span><span>ผู้เดินทาง</span><span>${(d.travelers || []).length} คน · ${(d.travelers || []).map((t) => esc(String(t.name).split(' ')[0])).join(', ')}</span>
+      <span>เส้นทาง</span><span>${esc(String(ST.settings.home.name).split(' · ')[0])} → ${(d.stops || []).map((x) => esc(String(x).split(' · ')[0])).join(' → ')} → กลับ · ${fmt(p.km)} กม.</span><span>รถ</span><span>${esc(vehTextPlain(p) || '—')}</span></div>`
+    : `<div class="rkv"><span>${d.type === 'EXP' ? 'รายการ' : 'เรื่อง'}</span><span>${esc(d.title)}</span><span>${d.type === 'EXP' ? 'จ่ายให้' : d.type === 'RMB' ? 'ผู้สำรองจ่าย' : 'ผู้รับเงิน'}</span><span>${esc(whoOf(d) || '—')}</span>
+      <span>วันที่</span><span>${thDate(d.go)}</span><span>${d.cat ? 'หมวด' : d.customer ? 'ลูกค้า' : ''}</span><span>${esc(d.cat || d.customer || '')}</span></div>`;
+  // 2. รายการที่ขอเบิก (ใบเดินทาง: แผนก่อนต่อทริป + ต่อทริปแต่ละครั้ง)
+  let req;
+  if (trv) {
+    const ext = d.ext || [], p0 = ext.length && ext[0].snap ? ext[0].snap.plan : p, base = ext.length && ext[0].snap ? ext[0].snap.requested : d.requested, c = carText(p0, s);
+    req = r(c[0], c[1], fmt(p0.fuel)) + r('เบี้ยเลี้ยง', `${p0.people} คน × ${p0.days} วัน × ${fmt(s.allowance)}`, fmt(p0.allowance))
+      + (p0.nights ? r('ที่พัก', `${p0.paidNights != null ? p0.paidNights : p0.nights} คืน × ${roomsLine(roomRatesOf(p0))}`, fmt(p0.hotel)) + (roomWhy(p0) || skipText(p0) ? `<div class="rwhy">${[roomWhy(p0), skipText(p0)].filter(Boolean).join(' · ')}</div>` : '') : '')
+      + (p0.extras || []).map((e) => r(esc(e.desc), esc(e.cat), fmt(e.amount))).join('')
+      + (ext.length ? r('รวมตอนขอ', '', fmt(base), 'sub') : '')
+      + ext.map((e, i) => r(`ต่อทริป ครั้งที่ ${i + 1}`, esc([(e.diff && e.diff.added || []).length ? `เพิ่ม ${e.diff.added.length} สถานที่` : '', e.diff && e.diff.newBack !== e.diff.oldBack ? `กลับ ${thDate(e.diff.newBack)}` : '', e.note || ''].filter(Boolean).join(' · ')), fmt(e.amount))).join('')
+      + (d.extReq ? r('ต่อทริป (รออนุมัติ)', '', `+${fmt(d.extReq.amount)}`, 'mut') : '')
+      + r('รวมเบิก', '', fmt(d.requested), 'tot');
+  } else if (d.type === 'ADV') req = (d.items || []).map((x) => r(esc(x.desc), '', fmt(x.amount))).join('') + r('รวมเงินทดรอง', '', fmt(d.requested), 'tot');
+  else req = r(esc(d.title), esc(d.cat || ''), fmt(d.requested)) + r('รวม', '', fmt(d.requested), 'tot');
+  // 3. การอนุมัติและการจ่าย
+  const ap = tl.find((t) => /^อนุมัติ/.test(t.text) || /สร้าง|บันทึก/.test(t.text));
+  const pay = d.payment, payB = B[(pay && pay.batch) || d.batch];
+  let flow = ap ? r(`admin ${/^อนุมัติ/.test(ap.text) ? 'อนุมัติ' : 'บันทึก'} · ${esc(ap.byName || '')}`, tTime(ap.at), `ช่องทาง: ${d.paidFrom === 'PC' ? 'เงินสำรองจ่าย' : 'โอนเข้าบัญชี'}`, 'mutv') : '';
+  if (payB) flow += r(`ใบเสนอ ${esc(payB.no)} · ${ceoOf(payB)}`, ceoAt(payB) ? tTime(ceoAt(payB)) : '', fmt((payB.items || []).filter((x) => x.ref === d.no && !x.ext).reduce((t, x) => t + x.amount, 0) || d.requested));
+  else if (isPcDirect(d)) flow += r('ไม่ต้องเสนอ CEO', 'จ่ายเงินสำรองจ่ายโดยตรง', '', 'mutv');
+  if (pay) flow += r(pay.src === 'PC' || d.paidFrom === 'PC' ? `จ่ายเงินสำรองจ่าย (เงินสด)${pay.byName ? ' · ' + esc(pay.byName) : ''}` : `โอนแล้ว · ${esc(pay.bank || '')}`, thDate(pay.date), pay.slip ? 'มีสลิป' : '', 'mutv');
+  else if (!d.cancelled && ['approve', 'submitted', 'returned'].includes(d.status)) flow += r('ยังไม่ได้จ่ายเงิน', d.batch ? `อยู่ในใบเสนอ ${esc(d.batch)}` : '', '', 'mut');
+  (d.ext || []).forEach((e, i) => { const eb = B[e.paid && e.paid.batch]; flow += r(`ต่อทริป ครั้งที่ ${i + 1}${eb ? ` · ใบเสนอ ${esc(eb.no)} · ${ceoOf(eb)}` : ''} · ${e.paid ? (e.paid.src === 'PC' ? 'จ่ายเงินสำรองจ่าย' : 'โอนแล้ว') : 'รอจ่าย'}`, e.paid ? thDate(e.paid.date) : '', fmt(e.amount)); });
+  // 4. ผลเคลียร์
+  let clr = '';
+  if (a && !d.tripCancelled) {
+    if (d.type === 'ADV') clr = (a.receipts || []).map((x) => r(esc(x.desc), esc(x.cat || ''), fmt(x.amount))).join('') + r('ใช้จริง', '', fmt(a.total), 'tot');
+    else clr = r(p.car === 'ev' ? 'ค่าชาร์จจริง' : 'ค่าน้ำมันจริง', fuelNote(a, p), fmt(a.fuel)) + r('เบี้ยเลี้ยง', `${a.people} คน × ${a.days} วัน`, fmt(a.allowance))
+      + (a.hotel || a.nights ? r('ที่พักจริง', `${a.nights} คืน`, fmt(a.hotel)) : '') + (a.extras || []).map((e) => r(esc(e.desc), '', fmt(e.counted))).join('')
+      + (a.adds || []).filter((e) => e.ok).map((e) => r(`${esc(e.desc)}`, 'ซื้อเพิ่มระหว่างทาง', fmt(e.amount))).join('') + r('ใช้จริง', '', fmt(a.total), 'tot');
+    const df = d.diff || 0, done = d.status === 'closed';
+    clr += `<div class="rres ${df < 0 ? 'g' : df > 0 ? 'b' : ''}"><span>${df < 0 ? `ผู้รับเงินคืนบริษัท · ${done ? 'รับแล้ว' : 'รอคืน'}` : df > 0 ? `บริษัทจ่ายเพิ่ม · ${done ? 'จ่ายแล้ว' : 'รอจ่าย'}` : 'พอดี'}${done && d.closedAt ? ` ${thDate(String(d.closedAt).slice(0, 10))}` : ''}</span><b class="num">${fmt(Math.abs(df))}</b></div>`;
+  } else if (d.status === 'clearSub' && d.clearSub) clr = r('ส่งเคลียร์แล้ว · รอ admin ตรวจ', tTime(d.clearSub.at), fmt(d.clearSub.total || 0), 'mut');
+  else if (trv || d.type === 'ADV') clr = `<div class="rpend">รอเคลียร์${trv ? 'หลังจบทริป' : 'ด้วยใบเสร็จ'}</div>`;
+  // ตรา
+  const ceoBox = isPcDirect(d) ? '' : `<div class="sign"><b>ผู้อนุมัติ (CEO)</b>${payB ? ceoStamp(payB) : '<span class="rstamp m">ยังไม่ผ่าน CEO</span>'}</div>`;
+  const payBox = `<div class="sign"><b>ผู้โอน / ผู้จ่าย</b>${pay ? `<span class="rstamp ${pay.src === 'PC' || d.paidFrom === 'PC' ? 'p' : 'b'}">✓ ${pay.src === 'PC' || d.paidFrom === 'PC' ? 'admin จ่ายเงินสด' : 'COO โอนแล้ว'}<br>${thDate(pay.date)}${(d.ext || []).some((e) => e.paid) ? `<br>+ ต่อทริป ${(d.ext || []).filter((e) => e.paid).length} ครั้ง` : ''}</span>` : '<span class="rstamp m">ยังไม่ได้จ่าย</span>'}</div>`;
+  const maker = (ap && ap.byName) || d.createdByName || '';
+  const page = `<div class="a4 rpt drpt">${a4Head('บริษัท ซีทูเทค จำกัด', '99/3 หมู่ 9 ต.วังไก่เถื่อน อ.หันคา จ.ชัยนาท 17130', `<b>รายงาน${trv ? 'ใบเบิกค่าเดินทาง' : 'ใบ' + esc(TYPE_LABEL[d.type] || '')}</b>เลขที่ ${esc(d.no)}<br>${esc(st)}`)}
+    <h4 class="rh">1. ข้อมูล${trv ? 'ทริป' : 'ใบ'}</h4>${info}
+    <div class="r2"><div><h4 class="rh">2. รายการที่ขอเบิก</h4>${req}</div><div><h4 class="rh">4. ผลเคลียร์</h4>${clr || '<div class="rpend">ไม่ต้องเคลียร์</div>'}</div></div>
+    <h4 class="rh">3. การอนุมัติและการจ่าย</h4>${flow || '<div class="rpend">—</div>'}
+    <h4 class="rh">5. ประวัติ</h4><div class="rhist">${tl.map((t) => `${tTime(t.at)} ${esc(t.text)}${t.byName ? ` (${esc(t.byName)})` : ''}`).join(' · ')}</div>
+    <div class="signs ${ceoBox ? 'three' : ''} rstamps"><div class="sign"><b>ผู้จัดทำ (admin)</b><div class="ln">( ${esc(maker)} )</div><small>วันที่ ......../......../........</small></div>${ceoBox}${payBox}</div>
     <div class="pfoot"><span>พิมพ์จาก C2-Pay · ${tTime(new Date().toISOString())}</span><span>${esc(d.no)}</span></div></div>`;
-  showPrint(d.no, 'รายงานเงินสำรองจ่าย · A4', page);
+  showPrint(d.no, 'รายงานรายใบ · A4', page);
 }
 function drawOther(d) {
   const lead = d.staffId === ST.me.id;
@@ -2220,7 +2266,7 @@ async function trvClick(a, v, b) {
   if (a === 'extNoGo') { const no = ST.openNo; if (!need([['#dn', 'เหตุผล']])) return true; await busy(b, async () => { await api('trvExtDecide', { no, decision: 'reject', note: $('#dn').value }); await reloadTrv(); render(); drawDoc(no); toast('ไม่อนุมัติต่อทริปแล้ว'); }); return true; }
   if (a === 'extCancel') { const no = ST.openNo; await busy(b, async () => { await api('trvExtCancel', { no }); await reloadTrv(); render(); drawDoc(no); toast('ยกเลิกการต่อทริปแล้ว · กลับเป็นแผนเดิม'); }); return true; }
   if (a === 'voucher') { await busy(b, () => voucherPrint(v)); return true; }
-  if (a === 'pcReport') { pcDocReport(v); return true; }
+  if (a === 'docReport') { await busy(b, () => docReport(v)); return true; }
   if (a === 'rfP') { ST.rf.p = v; render(); return true; }
   if (a === 'rptXlsx') { await busy(b, rptXlsx); return true; }
   // รอบ 4: ใบเสนอ CEO
