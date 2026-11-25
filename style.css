@@ -1024,6 +1024,38 @@ details.wslip summary::-webkit-details-marker { display: none; }
 .a4.drpt .rres.g { background: #E2F2E8; color: #2E7D4F; } .a4.drpt .rres.b { background: #E4EEF8; color: #2f6fb0; }
 .a4.drpt .rpend { font-size: 12px; color: #8A958F; font-style: italic; padding: 2px 0; }
 .a4.drpt .rhist { font-size: 10.5px; color: #4a4a48; line-height: 1.6; }
+/* รอบ 23: แบ่งผู้รับเงินรายก้อน (หน้าอนุมัติ/รายละเอียดใบ) */
+.spbox .spr { display: grid; grid-template-columns: minmax(0, 1fr) 80px minmax(0, 190px); gap: 10px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line); }
+.spbox .spr span small { display: block; color: var(--sub); font-size: 12px; } .spbox .spr b { text-align: right; } .spbox .spr .sel { height: 34px; }
+.spbox .spfix { font-size: 12.5px; color: var(--sub); }
+.spbox .spsum { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin-top: 10px; }
+.spbox .sps { background: var(--soft); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; }
+.spbox .sps span { font-size: 17px; font-weight: 700; } .spbox .sps small { color: var(--sub); font-size: 11.5px; } .spbox .sps small.warn { color: var(--warn); }
+@container app (max-width: 760px) { .spbox .spr { grid-template-columns: minmax(0, 1fr) auto; } .spbox .spr .sel, .spbox .spr .spfix { grid-column: 1 / -1; } }
+/* รอบ 23: ใบสำคัญรับเงิน · A4 = ต้นฉบับ (บน) + สำเนา (ล่าง) */
+.a4.rec { display: flex; flex-direction: column; padding: 26px 40px; }
+.a4.rec .rhalf { flex: 1; display: flex; flex-direction: column; padding: 4px 0 10px; }
+.a4.rec.full .rhalf { flex: 0 0 auto; }
+.a4.rec .ph { margin-bottom: 8px; padding-bottom: 8px; } .a4.rec .ph img { height: 22px; }
+.a4.rec .docno b { font-size: 17px; } .a4.rec .rtag { display: inline-block; margin-top: 3px; font-size: 10.5px; padding: 1px 9px; border-radius: 999px; border: 1px solid #3F654D; color: #3F654D; font-family: 'Anuphan', sans-serif; font-weight: 500; align-self: flex-end; }
+.a4.rec .rtag.c { border-color: #9aa39e; color: #5F6C65; }
+.a4.rec .rlead { margin: 2px 0 6px; font-size: 12.5px; } .a4.rec .rlead b { font-weight: 600; }
+.a4.rec .rtb { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 11.5px; }
+.a4.rec .rtb th { text-align: left; font-weight: 600; background: #F1F4F2; border-bottom: 1px solid #9FB0A6; padding: 4px 6px; }
+.a4.rec .rtb td { padding: 4px 6px; border-bottom: 1px solid #E3E8E5; vertical-align: top; } .a4.rec .rtb .r { text-align: right; }
+.a4.rec .rtb small { display: block; color: #5F6C65; font-size: 10.5px; }
+.a4.rec .rcl { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.a4.rec .rtot td { border-top: 1.5px solid #3F654D; border-bottom: 0; font-weight: 700; }
+.a4.rec .rty { display: inline-block; font-size: 10px; padding: 1px 8px; border-radius: 999px; white-space: nowrap; border: 1px solid transparent; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.a4.rec .rty.fu { background: #FCF0D6; color: #8A5A00; border-color: #EBD7A6; } .a4.rec .rty.h { background: #E4EEF8; color: #2D648F; border-color: #C3D6EA; }
+.a4.rec .rty.ex { background: #FBE7E4; color: #9A3B30; border-color: #F0C7C1; } .a4.rec .rty.al { background: #E2F2E8; color: #2E7D4F; border-color: #BFDDC9; }
+.a4.rec .rty.e { background: #EEE8F7; color: #5B3F8C; border-color: #D5C8EA; } .a4.rec .rty.x { background: #FFF1DC; color: #8A5A00; border-color: #EBD3A6; }
+.a4.rec .rty.a { background: #E4EEF8; color: #2D648F; border-color: #C3D6EA; } .a4.rec .rty.r { background: #EDEFF1; color: #4a4a48; border-color: #D6DADD; }
+.a4.rec .rwords { text-align: right; font-size: 11px; color: #5F6C65; margin-top: 3px; }
+.a4.rec .rkv2 { display: grid; grid-template-columns: 72px minmax(0, 1fr) 52px minmax(0, 1.3fr); gap: 2px 10px; font-size: 11.5px; margin-top: 6px; } .a4.rec .rkv2 span:nth-child(odd) { color: #5F6C65; }
+.a4.rec .rsigns { display: grid; grid-template-columns: repeat(2, minmax(0, 240px)); justify-content: space-around; gap: 14px; margin-top: auto; padding-top: 12px; }
+.a4.rec .rsigns .sign .ln { margin-top: 26px; }
+.a4.rec .rcut { border-top: 1.5px dashed #9aa39e; position: relative; margin: 6px -40px; } .a4.rec .rcut span { position: absolute; top: -9px; left: 50%; transform: translateX(-50%); background: #fff; padding: 0 10px; font-size: 10.5px; color: #8A958F; }
 .a4 .signs.one { grid-template-columns: minmax(0, 260px); justify-content: end; } /* รอบ 16: รายงานเงินสำรองจ่าย · admin ลงนามคนเดียว */
 .vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .fchg { position: relative; height: 30px; cursor: pointer; } .fchg:focus-within { outline: 2px solid var(--brand, #3F654D); outline-offset: 2px; }
