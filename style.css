@@ -175,6 +175,7 @@ tfoot td { font-weight: 700; background: var(--soft); border-top: 1px solid var(
 .dh h2 { font-family: var(--f-num); font-size: 18px; margin: 0; }
 .dh .x { margin-left: auto; }
 .db { flex: 1; overflow-y: auto; padding: 16px 18px 24px; display: flex; flex-direction: column; gap: 14px; }
+.db > * { flex-shrink: 0; } /* เนื้อหายาวเกินจอ: ห้ามบีบลูก (ปุ่ม .btn มี overflow:hidden จะถูกบีบจนเหลือแค่เส้นขอบ) */
 .df { padding: 12px 18px calc(12px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--line); background: var(--surface); display: flex; flex-direction: column; gap: 10px; }
 .kv { display: grid; grid-template-columns: 110px minmax(0,1fr); gap: 6px 12px; font-size: 13.5px; }
 .kv dt { color: var(--sub); } .kv dd { margin: 0; min-width: 0; }
